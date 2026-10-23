@@ -2088,7 +2088,7 @@ function drawTrace() {
       ctx.stroke();
     }
     ctx.setLineDash([]); ctx.restore();
-    if (p === 0 && n) { ctx.font = '10.5px ' + C.data; ctx.fillStyle = C.fb; ctx.textAlign = 'right'; ctx.fillText(`実 ${tr.spdA[idx(n - 1)].toFixed(1)}`, L + xw - 4, y0 + 12); ctx.fillStyle = C.cmd; ctx.fillText(`指令 ${tr.spdC[idx(n - 1)].toFixed(1)}`, L + xw - 74, y0 + 12); }
+    if (p === 0 && n) { ctx.font = '10.5px ' + C.data; ctx.fillStyle = C.fb; ctx.textAlign = 'right'; ctx.fillText(`実 ${fmt(tr.spdA[idx(n - 1)], 1)}`, L + xw - 4, y0 + 12); ctx.fillStyle = C.cmd; ctx.fillText(`指令 ${fmt(tr.spdC[idx(n - 1)], 1)}`, L + xw - 74, y0 + 12); }
   });
   const by0 = top + PH.length * ph;
   traceOps.forEach((op, b) => {
@@ -2464,7 +2464,8 @@ function updBlock() {
 }
 
 // ---------- 表示の更新 ----------
-const fmt = (v, d = 0) => v.toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d });
+// 数値を桁区切りと小数 d 桁で表示する。丸めて 0 になる小さなマイナス（-0.0004 など）は「-0」ではなく「0」にする
+const fmt = (v, d = 0) => { const r = Math.round(v * 10 ** d) / 10 ** d; return (r === 0 ? 0 : r).toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d }); };
 function updPanel() {
   for (const p of PANEL) p.el.classList.toggle('on', panelIn[p.x] === 1);
   document.querySelectorAll('#lampsY .lamp').forEach(l => l.classList.toggle('lit', S.y[+l.dataset.y] === 1));
