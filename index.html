@@ -249,6 +249,10 @@ details summary { cursor: pointer; font-weight: 600; }
 .pane-h .extra { flex: 1 1 auto; min-width: 0; }
 .pane-tools { display: flex; gap: 4px; margin-left: auto; }
 .pane-tools button { font: 12px var(--font-data); padding: 2px 8px; }
+/* ラダー図の拡大・縮小ボタン（小さめ） */
+.zoom { display: inline-flex; gap: 2px; }
+.zoom button { font: 11px var(--font-data); padding: 1px 6px; min-width: 24px; }
+.zoom #ladZoomReset { min-width: 44px; }
 .pane.collapsed .pane-b { display: none; }
 .pane.collapsed .pane-h { border-bottom: 0; }
 .pane-b { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -556,7 +560,7 @@ details summary { cursor: pointer; font-weight: 600; }
     </section>
 
     <section class="pane s3" data-pane="ladder" aria-label="ラダー">
-      <header class="pane-h"><button type="button" class="grip" aria-label="ラダーのペインを移動（矢印キーでも動く）">⠿</button><h2>ラダー（モニタ中）</h2><span class="extra hint" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span>青い接点・コイルが導通中。クリックで同じデバイスの次の場所へ・ダブルクリックでコメント編集・Ctrl＋クリックで割り付け</span><label style="display:inline-flex;gap:4px;align-items:center;color:var(--ink)"><input type="checkbox" id="cmtShow" checked> コメント表示</label></span></header>
+      <header class="pane-h"><button type="button" class="grip" aria-label="ラダーのペインを移動（矢印キーでも動く）">⠿</button><h2>ラダー（モニタ中）</h2><span class="extra hint" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span>青い接点・コイルが導通中。クリックで同じデバイスの次の場所へ・ダブルクリックでコメント編集・Ctrl＋クリックで割り付け</span><label style="display:inline-flex;gap:4px;align-items:center;color:var(--ink)"><input type="checkbox" id="cmtShow" checked> コメント表示</label><span class="zoom" role="group" aria-label="ラダー図の表示倍率"><button type="button" id="ladZoomOut" aria-label="縮小">−</button><button type="button" id="ladZoomReset" title="100 % に戻す">100%</button><button type="button" id="ladZoomIn" aria-label="拡大">＋</button></span></span></header>
       <div class="pane-b">
         <span class="hint" id="ladMsg" aria-live="polite"></span>
         <div class="ladwrap"><svg class="lad" id="lad" xmlns="http://www.w3.org/2000/svg"></svg></div>
@@ -1860,6 +1864,27 @@ function initComments() {
 }
 
 const CW = 74, OW = 250, LX = 46;
+// ---------- ラダー図の表示倍率（50〜200 %、ブラウザに保存） ----------
+const LADZ = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+let ladZoom = 1;
+try { const z = +localStorage.getItem('j5g-ladzoom'); if (LADZ.includes(z)) ladZoom = z; } catch (e) {}
+// 倍率を SVG の大きさに反映する（中身は viewBox のまま拡大縮小される）。見ていた場所はなるべく保つ
+function applyLadZoom(prev) {
+  const svg = $('lad'), wrap = document.querySelector('.ladwrap');
+  const fx = prev ? (wrap.scrollLeft + wrap.clientWidth / 2) / (+svg.dataset.w * prev) : 0;
+  const fy = prev ? (wrap.scrollTop + wrap.clientHeight / 2) / (+svg.dataset.h * prev) : 0;
+  svg.setAttribute('width', Math.round(+svg.dataset.w * ladZoom)); svg.setAttribute('height', Math.round(+svg.dataset.h * ladZoom));
+  if (prev) { wrap.scrollLeft = fx * svg.dataset.w * ladZoom - wrap.clientWidth / 2; wrap.scrollTop = fy * svg.dataset.h * ladZoom - wrap.clientHeight / 2; }
+  $('ladZoomReset').textContent = Math.round(ladZoom * 100) + '%';
+  $('ladZoomOut').disabled = ladZoom === LADZ[0]; $('ladZoomIn').disabled = ladZoom === LADZ[LADZ.length - 1];
+}
+function setLadZoom(z) {
+  const prev = ladZoom; ladZoom = z; applyLadZoom(prev);
+  try { localStorage.setItem('j5g-ladzoom', String(z)); } catch (e) {}
+}
+$('ladZoomIn').addEventListener('click', () => setLadZoom(LADZ[Math.min(LADZ.length - 1, LADZ.indexOf(ladZoom) + 1)]));
+$('ladZoomOut').addEventListener('click', () => setLadZoom(LADZ[Math.max(0, LADZ.indexOf(ladZoom) - 1)]));
+$('ladZoomReset').addEventListener('click', () => setLadZoom(1));
 let RH = 50;
 let ladRefs = [];
 function sizeOf(n) {
@@ -1965,7 +1990,7 @@ function buildLadder() {
   parts.push(`<text x="${LX + 8}" y="${y + 18}" class="step">END</text>`);
   const H = y + 30;
   parts.unshift(`<path d="M${LX} 4V${H - 18}M${railR} 4V${H - 18}" class="rail"/>`);
-  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.dataset.w = W; svg.dataset.h = H; svg.setAttribute('viewBox', `0 0 ${W} ${H}`); applyLadZoom();
   svg.innerHTML = parts.join('');
   for (const r of ladRefs) { r.el = document.getElementById(r.g); r.vel = r.val ? document.getElementById(r.val) : null; r.last = null; r.lastV = null; }
 }
