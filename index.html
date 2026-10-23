@@ -251,6 +251,10 @@ details summary { cursor: pointer; font-weight: 600; }
 .bd text.v, .bd .v text { font: 500 11px var(--font-data); fill: var(--muted); }
 .bd text.v.on { fill: var(--on); }
 .bd .al { font: 10.5px var(--font-body); fill: var(--muted); }
+/* ラダー図でマウスを乗せたデバイスを、ブロック図でピンクに光らせて 0.4 秒周期で点滅 */
+@keyframes bdhl { 0% { fill: #FF4FB8; filter: drop-shadow(0 0 3px #FF4FB8) drop-shadow(0 0 6px #FF4FB8); } 50% { filter: none; } }
+.bd text.hl { animation: bdhl .4s step-end infinite; }
+@media (prefers-reduced-motion: reduce) { .bd text.hl { animation: none; fill: #FF4FB8; } }
 .bd .lp { fill: var(--chip); stroke: var(--line); }
 .bd .lp.on { fill: var(--on); stroke: var(--on); }
 .bd .lp.crit.on { fill: var(--crit); stroke: var(--crit); }
@@ -2202,6 +2206,24 @@ for (const k of ['oprV', 'creep', 'jogAcc', 'link', 'level']) $('p-' + k).addEve
 // ---------- 構成ブロック図 ----------
 const bdSet = (id, txt) => { const el = $(id); if (el && el.textContent !== txt) el.textContent = txt; };
 const bdOn = (id, on) => { const el = $(id); if (el) el.classList.toggle('on', !!on); };
+// ---------- ラダー図にマウスを乗せると、ブロック図の同じデバイスの文字を光らせる ----------
+// ブロック図の「X4 JOG−」「D2000 コントロールワード」のような行を、先頭のデバイス名で引けるようにする
+const bdDevMap = new Map();
+for (const t of document.querySelectorAll('svg.bd text')) {
+  const m = t.textContent.match(/^([XYMD]\d+)\s/); if (!m) continue;
+  const els = [t], v = t.nextElementSibling;
+  if (v && v.tagName === 'text' && v.classList.contains('v')) els.push(v); // 右側の値も一緒に光らせる
+  bdDevMap.set(m[1], els);
+}
+let bdHl = [];
+// 指定したデバイス（ビット指定は元のワード）の行を光らせる。null で消す
+function hlBlock(dev) {
+  bdHl.forEach(e => e.classList.remove('hl'));
+  bdHl = dev ? bdDevMap.get(dev.replace(/\.[0-9A-F]$/, '')) || [] : [];
+  bdHl.forEach(e => e.classList.add('hl'));
+}
+$('lad').addEventListener('mouseover', e => hlBlock(e.target.closest('g[data-dev]')?.dataset.dev || null));
+$('lad').addEventListener('mouseleave', () => hlBlock(null));
 const bdFlow = (id, on) => {
   const el = $(id); if (!el || el.classList.contains('act') === !!on) return;
   el.classList.toggle('act', !!on); el.setAttribute('marker-end', on ? 'url(#bdAon)' : 'url(#bdA)');
