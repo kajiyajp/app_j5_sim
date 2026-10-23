@@ -238,7 +238,10 @@ details summary { cursor: pointer; font-weight: 600; }
 .cmt-t input { width: 100%; padding: 3px 6px; }
 .cmt-t input.cdev { width: 120px; }
 .cmt-t input.bad { border-color: var(--crit); color: var(--crit); }
-.cmt-t tr.flash td { background: var(--on-soft); }
+.cmt-t tr.flash td, #rmap tr.flash td { background: var(--on-soft); }
+/* ラダー図のクリックで飛んだ先のデバイスを一瞬ピンクに光らせる */
+@keyframes ladjump { from { filter: drop-shadow(0 0 4px #FF4FB8) drop-shadow(0 0 8px #FF4FB8); } to { filter: none; } }
+.lad g.jump { animation: ladjump 1s ease-out; }
 #cmtCsv { width: 100%; font: 12px var(--font-data); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
 /* 構成ブロック図 */
 .bdfig { margin: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -508,8 +511,9 @@ details summary { cursor: pointer; font-weight: 600; }
     </section>
 
     <section class="pane s3" data-pane="ladder" aria-label="ラダー">
-      <header class="pane-h"><button type="button" class="grip" aria-label="ラダーのペインを移動（矢印キーでも動く）">⠿</button><h2>ラダー（モニタ中）</h2><span class="extra hint" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span>青い接点・コイルが導通中。デバイスを押すとコメントを編集</span><label style="display:inline-flex;gap:4px;align-items:center;color:var(--ink)"><input type="checkbox" id="cmtShow" checked> コメント表示</label></span></header>
+      <header class="pane-h"><button type="button" class="grip" aria-label="ラダーのペインを移動（矢印キーでも動く）">⠿</button><h2>ラダー（モニタ中）</h2><span class="extra hint" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span>青い接点・コイルが導通中。クリックで同じデバイスの次の場所へ・ダブルクリックでコメント編集・Ctrl＋クリックで割り付け</span><label style="display:inline-flex;gap:4px;align-items:center;color:var(--ink)"><input type="checkbox" id="cmtShow" checked> コメント表示</label></span></header>
       <div class="pane-b">
+        <span class="hint" id="ladMsg" aria-live="polite"></span>
         <div class="ladwrap"><svg class="lad" id="lad" xmlns="http://www.w3.org/2000/svg"></svg></div>
       </div>
     </section>
@@ -524,6 +528,12 @@ details summary { cursor: pointer; font-weight: 600; }
           <button type="button" role="tab" id="tab-how" aria-controls="tp-how" aria-selected="false" tabindex="-1">動かし方</button>
           <button type="button" role="tab" id="tab-cmt" aria-controls="tp-cmt" aria-selected="false" tabindex="-1">デバイスコメント</button>
           <button type="button" role="tab" id="tab-ins" aria-controls="tp-ins" aria-selected="false" tabindex="-1">使える命令</button>
+          <button type="button" role="tab" id="tab-dev" aria-controls="tp-dev" aria-selected="false" tabindex="-1">デバイスモニタ</button>
+        </div>
+
+        <div role="tabpanel" id="tp-dev" aria-labelledby="tab-dev" class="tp" hidden>
+          <span class="hint">プログラムで使うデバイス</span>
+          <div class="tablewrap"><table><thead><tr><th>デバイス</th><th style="text-align:right">値</th><th>コメント</th></tr></thead><tbody id="devmon"></tbody></table></div>
         </div>
 
         <div role="tabpanel" id="tp-src" aria-labelledby="tab-src" class="tp">
@@ -615,9 +625,14 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s3" data-pane="timing" aria-label="タイミングチャート">
-      <header class="pane-h"><button type="button" class="grip" aria-label="タイミングチャートのペインを移動（矢印キーでも動く）">⠿</button><h2>タイミングチャート</h2><span class="extra"><span class="chip ok" id="tcState">サンプリング中</span></span></header>
+    <section class="pane s3" data-pane="scope" aria-label="タイミングチャートとトレース">
+      <header class="pane-h"><button type="button" class="grip" aria-label="タイミングチャートとトレースのペインを移動（矢印キーでも動く）">⠿</button><h2>波形</h2><span class="extra"><span class="chip ok" id="tcState">サンプリング中</span></span></header>
       <div class="pane-b">
+        <div class="tabs" role="tablist" aria-label="波形" id="tabs2">
+          <button type="button" role="tab" id="tab-tc" aria-controls="tp-tc" aria-selected="true">タイミングチャート</button>
+          <button type="button" role="tab" id="tab-tr" aria-controls="tp-tr" aria-selected="false" tabindex="-1">トレース（直近 4 秒）</button>
+        </div>
+        <div role="tabpanel" id="tp-tc" aria-labelledby="tab-tc" class="tp">
         <div class="tcbar">
           <label class="hint" style="display:flex;gap:6px;align-items:center;flex:1 1 360px">デバイス <input type="text" id="tcDevs" value="X0,M30,D2002,D2000.4,D1000.C,D1000.A,D1001,X2,M10,D1000.D,D2000" style="flex:1;min-width:0" aria-label="タイミングチャートのデバイス（カンマ区切り）"></label>
           <label class="hint" for="tcWin">時間幅</label>
@@ -633,20 +648,11 @@ details summary { cursor: pointer; font-weight: 600; }
           <span class="hint" id="tcCur">チャートをクリックするとカーソル A、もう一度で B。停止中に使います。</span>
         </div>
         <canvas id="tc" aria-label="ビットとワードのタイミングチャート"></canvas>
-      </div>
-    </section>
-
-    <section class="pane s3" data-pane="trace" aria-label="トレース">
-      <header class="pane-h"><button type="button" class="grip" aria-label="トレースのペインを移動（矢印キーでも動く）">⠿</button><h2>トレース（直近 4 秒）</h2><span class="extra hint">速度・偏差・トルク</span></header>
-      <div class="pane-b">
-        <canvas id="trace" aria-label="速度・偏差・トルクのトレース"></canvas>
-      </div>
-    </section>
-
-    <section class="pane s3" data-pane="devmon" aria-label="デバイスモニタ">
-      <header class="pane-h"><button type="button" class="grip" aria-label="デバイスモニタのペインを移動（矢印キーでも動く）">⠿</button><h2>デバイスモニタ</h2><span class="extra hint">プログラムで使うデバイス</span></header>
-      <div class="pane-b">
-        <div class="tablewrap"><table><thead><tr><th>デバイス</th><th style="text-align:right">値</th><th>コメント</th></tr></thead><tbody id="devmon"></tbody></table></div>
+        </div>
+        <div role="tabpanel" id="tp-tr" aria-labelledby="tab-tr" class="tp" hidden>
+          <span class="hint">速度・偏差・トルク</span>
+          <canvas id="trace" aria-label="速度・偏差・トルクのトレース"></canvas>
+        </div>
       </div>
     </section>
   </div>
@@ -1661,6 +1667,26 @@ function renderCmtTable(focusDev) {
     if (inp) { inp.scrollIntoView({ block: 'center' }); inp.focus(); inp.closest('tr').classList.add('flash'); setTimeout(() => inp.closest('tr')?.classList.remove('flash'), 1200); }
   }
 }
+// ラダー図で、同じデバイス（ビット指定は元のワードも同じとみなす）が次に出てくる場所へスクロールして光らせる
+function jumpNextDev(g) {
+  const base = d => d.replace(/\.[0-9A-F]$/, ''), key = base(g.dataset.dev);
+  const all = [...$('lad').querySelectorAll('g[data-dev]')].filter(x => base(x.dataset.dev) === key);
+  const next = all[(all.indexOf(g) + 1) % all.length];
+  const wrap = document.querySelector('.ladwrap'), wr = wrap.getBoundingClientRect(), r = next.getBoundingClientRect();
+  wrap.scrollTop += (r.top - wr.top) - (wr.height - r.height) / 2;
+  wrap.scrollLeft += Math.min(0, r.left - wr.left - 20) + Math.max(0, r.right - wr.right + 20);
+  next.classList.remove('jump'); void next.getBoundingClientRect(); next.classList.add('jump');
+  $('ladMsg').textContent = all.length > 1 ? `${g.dataset.dev}: ${all.indexOf(next) + 1} / ${all.length} か所目` : `${g.dataset.dev}: ほかに使っている場所はありません`;
+}
+// 割り付け表にあるデバイス（D1000〜・D2000〜）はその行を、ないデバイスはデバイスコメントを表示する
+function showAssign(dev) {
+  const key = dev.replace(/\.[0-9A-F]$/, '');
+  const tr = [...$('rmap').querySelectorAll('tr[data-devs]')].find(t => t.dataset.devs.split(' ').includes(key));
+  if (!tr) { openComment(dev); return; }
+  selTab($('tab-map'));
+  document.querySelector('[data-pane="docs"]').scrollIntoView({ block: 'nearest' });
+  tr.scrollIntoView({ block: 'center' }); tr.classList.add('flash'); setTimeout(() => tr.classList.remove('flash'), 1200);
+}
 function openComment(dev) {
   selTab($('tab-cmt'));
   $('cmtFilter').value = '';
@@ -1722,7 +1748,18 @@ function initComments() {
     $('cmtMsg').textContent = `${n} 件読み込みました。${bad ? `読めない行が ${bad} 行ありました。` : ''}`;
   });
   $('cmtShow').addEventListener('change', () => { try { localStorage.setItem('j5g-cmtshow', $('cmtShow').checked ? '1' : '0'); } catch (e) {} buildLadder(); });
-  $('lad').addEventListener('click', e => { const g = e.target.closest('g[data-dev]'); if (g) openComment(g.dataset.dev); });
+  // クリック: 同じデバイスの次の場所へ飛ぶ／ダブルクリック: コメント編集／Ctrl＋クリック: 割り付けを表示
+  let ladClickT = 0;
+  $('lad').addEventListener('click', e => {
+    const g = e.target.closest('g[data-dev]'); if (!g) return;
+    if (e.ctrlKey || e.metaKey) { showAssign(g.dataset.dev); return; }
+    if (e.detail > 1) return;
+    clearTimeout(ladClickT); ladClickT = setTimeout(() => jumpNextDev(g), 250); // ダブルクリックと区別するため少し待つ
+  });
+  $('lad').addEventListener('dblclick', e => {
+    const g = e.target.closest('g[data-dev]'); if (!g || e.ctrlKey || e.metaKey) return;
+    clearTimeout(ladClickT); openComment(g.dataset.dev);
+  });
   renderCmtTable();
 }
 
@@ -1745,7 +1782,7 @@ function buildLadder() {
   let y = 8; const parts = []; ladRefs = [];
   let gid = 0;
   RH = showCmt() ? 66 : 50;
-  const G0 = dev => { const id = 'lg' + (gid++); return { id, open: `<g id="${id}"${dev ? ` data-dev="${esc(dev)}" class="lk"` : ''}>${dev ? `<title>${esc(dev)}${cmtOf(dev) ? ' ' + esc(cmtOf(dev)) : ''}（クリックでコメント）</title>` : ''}` }; };
+  const G0 = dev => { const id = 'lg' + (gid++); return { id, open: `<g id="${id}"${dev ? ` data-dev="${esc(dev)}" class="lk"` : ''}>${dev ? `<title>${esc(dev)}${cmtOf(dev) ? ' ' + esc(cmtOf(dev)) : ''}（クリック: 次の場所へ／ダブルクリック: コメント／Ctrl＋クリック: 割り付け）</title>` : ''}` }; };
   for (const r of prog.rungs) {
     if (r.comment) { parts.push(`<text x="${LX + 4}" y="${y + 13}" class="stmt">* ${esc(r.comment)}</text>`); y += 20; }
     const sz = sizeOf(r.cond), rows = Math.max(sz.h, r.outs.length), top = y;
@@ -2164,6 +2201,21 @@ TABS.forEach((b, i) => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); selTab(TABS[(i + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length], true); }
   });
 });
+// 波形ペイン（タイミングチャート／トレース）のタブ。選んだタブはブラウザに保存
+const TABS2 = [...document.querySelectorAll('#tabs2 [role=tab]')];
+function selTab2(t, focus) {
+  for (const b of TABS2) { const on = b === t; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; $(b.getAttribute('aria-controls')).hidden = !on; }
+  $('tcState').hidden = t.id !== 'tab-tc';
+  if (focus) t.focus();
+  try { localStorage.setItem('j5g-tab2', t.id); } catch (e) {}
+}
+TABS2.forEach((b, i) => {
+  b.addEventListener('click', () => selTab2(b));
+  b.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); selTab2(TABS2[(i + 1) % TABS2.length], true); }
+  });
+});
+{ let t = null; try { t = localStorage.getItem('j5g-tab2'); } catch (e) {} const b = t && $(t); if (b && TABS2.includes(b)) selTab2(b); }
 
 // ---------- デバイスモニタ・表 ----------
 function devList() {
@@ -2198,7 +2250,7 @@ function updDevMon() {
   }
 }
 function buildRmap() {
-  $('rmap').innerHTML = RMAP.map(([d, l, nm, ds]) => `<tr><td class="d">D${d}${l.includes('-') ? '〜' + (d + 1) : ''}</td><td class="d">${l}</td><td class="wrap"><b>${esc(nm)}</b><br><span class="hint">${esc(ds)}</span></td></tr>`).join('');
+  $('rmap').innerHTML = RMAP.map(([d, l, nm, ds]) => `<tr data-devs="D${d}${l.includes('-') ? ' D' + (d + 1) : ''}"><td class="d">D${d}${l.includes('-') ? '〜' + (d + 1) : ''}</td><td class="d">${l}</td><td class="wrap"><b>${esc(nm)}</b><br><span class="hint">${esc(ds)}</span></td></tr>`).join('');
 }
 function buildPtab() {
   $('ptab').innerHTML = ptab.map((d, i) => `<tr>
