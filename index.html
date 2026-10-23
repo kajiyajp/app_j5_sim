@@ -1530,17 +1530,22 @@ function setDsw(v) {
   $('dswBits').innerHTML = [1, 2, 4, 8].map((w, i) => `<span class="${panelIn[DSW_X + i] ? 'on' : ''}">X${(DSW_X + i).toString(8)}=${w}</span>`).join('');
   try { localStorage.setItem('j5g-dsw', String(dswVal)); } catch (e) {}
 }
-// 方式を切り替え、操作盤の表示と（サンプルのままなら）ラダーを合わせる
+// 方式を切り替え、操作盤の表示とラダー（その方式のサンプル）を合わせる
 function setModes(mode, ovr, load) {
+  const key = MODE_SAMPLE[mode + (ovr ? '+ovr' : '')];
+  // 操作盤とラダーがずれないよう、切り替えたら必ずサンプルを書き込む。自作のラダーは確かめてから置き換える
+  if (load && !Object.values(SAMPLES).includes(src.value) &&
+      !confirm(`操作盤に合わせて、ラダーをサンプル ${key.slice(1)} に置き換えて書き込みます。エディタの今の内容は消えます。よろしいですか？`)) {
+    $('ptsel-' + ptMode).checked = true; $(ovrOn ? 'ovr-on' : 'ovr-off').checked = true;
+    return;
+  }
   ptMode = mode; ovrOn = ovr;
   $('ptsel-' + mode).checked = true; $(ovr ? 'ovr-on' : 'ovr-off').checked = true;
   $('dsw').hidden = mode !== 'sel'; $('rsw').hidden = !ovr;
   setDsw(dswVal); setRsw(rswVal);
   try { localStorage.setItem('j5g-ptsel', mode); localStorage.setItem('j5g-ovr', ovr ? '1' : '0'); } catch (e) {}
   if (!load) return;
-  const key = MODE_SAMPLE[mode + (ovr ? '+ovr' : '')];
   $('sample').value = key;
-  if (!Object.values(SAMPLES).includes(src.value)) { setState(`自作のラダーは置き換えていません（サンプル ${key.slice(1)} は「読み込む」で）`, 'warn'); return; }
   src.value = SAMPLES[key]; updGutter();
   try { localStorage.setItem('j5g-src', src.value); } catch (e) {}
   writeProgram();
@@ -2269,17 +2274,19 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { re
 buildPanel(); buildRmap(); buildPtab(); tcSetDevices(); tcUi(); initPanes(); initComments();
 { let t = null; try { t = localStorage.getItem('j5g-tab'); } catch (e) {} const b = t && $(t); if (b && TABS.includes(b)) selTab(b); }
 let saved = null; try { saved = localStorage.getItem('j5g-src'); } catch (e) {}
-src.value = SAMPLES.s1; updGutter(); writeProgram();
-if (saved && saved !== SAMPLES.s1) { src.value = saved; updGutter(); setState(); showMsgs(parseProgram(saved)); }
-// 前回の No. 指定方式とデジタルスイッチの値を戻す（ラダーは上で戻した内容のまま）
+// 前回の No. 指定方式・オーバーライドとスイッチの値を戻し、その方式のサンプルを書き込んで始める
 try { const s = localStorage.getItem('j5g-dsw'), v = +s; if (s != null && v >= 0 && v <= 9) dswVal = v; } catch (e) {}
 try { const s = localStorage.getItem('j5g-rsw'), v = +s; if (s != null && v >= 0 && v <= 15) rswVal = v; } catch (e) {}
 {
   let m = null, o = null; try { m = localStorage.getItem('j5g-ptsel'); o = localStorage.getItem('j5g-ovr'); } catch (e) {}
   setModes(m === 'sel' ? 'sel' : 'lad', o === '1', false);
 }
-// 前回のラダーが今の方式のサンプル（1 以外）なら、書込み済みにする
-{ const key = MODE_SAMPLE[ptMode + (ovrOn ? '+ovr' : '')]; if (key !== 's1' && src.value === SAMPLES[key]) { $('sample').value = key; writeProgram(); } }
+{
+  const key = MODE_SAMPLE[ptMode + (ovrOn ? '+ovr' : '')];
+  $('sample').value = key; src.value = SAMPLES[key]; updGutter(); writeProgram();
+  // 前回エディタにあった別の内容は、未書込みのまま戻す（動いているのは上で書いたサンプル）
+  if (saved && saved !== SAMPLES[key]) { src.value = saved; updGutter(); setState(); showMsgs(parseProgram(saved)); }
+}
 window.__j5 = { S, drv, mot, mach, panelIn, parseProgram, get prog() { return prog; }, scanOnce };
 requestAnimationFrame(loop);
 })();
