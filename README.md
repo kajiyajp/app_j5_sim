@@ -18,6 +18,7 @@ GX Works3 のニーモニックでラダーを書き換えて書き込むと、�
 **https://kajiyajp.github.io/app_j5_sim/** をブラウザで開くと、そのまま使えます（GitHub Pages で公開中。`main` ブランチの最新版が自動で反映されます）。
 
 - 古い表示のままのときは、Ctrl + F5（Mac は ⌘ + Shift + R）で再読み込みしてください。
+- 作った経緯や使い方の紹介記事（Qiita）: [実機なしで学ぶ PLC × サーボ：ブラウザで動くラダー＆MR-J5 シミュレータを作った【非公式】](https://qiita.com/kajiyajp/items/be760e40410220e65863)
 - 前の版も開けます: [v1](https://kajiyajp.github.io/app_j5_sim/old/v1-tuning.html)・[v2](https://kajiyajp.github.io/app_j5_sim/old/v2-simple-motion.html)・[v3](https://kajiyajp.github.io/app_j5_sim/old/v3-direct-first.html)
 
 ## 使い方
