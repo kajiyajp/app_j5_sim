@@ -169,6 +169,7 @@ select { font-family: var(--font-body); }
 .lad .dev { fill: var(--ink); font: 500 10.5px var(--font-data); }
 .lad .on .dev { fill: var(--on); }
 .lad .val { fill: var(--muted); font: 10px var(--font-data); }
+.lad .val.mean { fill: var(--on); }
 .lad .stmt { fill: var(--stmt); font: 500 11.5px var(--font-body); }
 .lad .step { fill: var(--muted); font: 10px var(--font-data); }
 .lad .box { fill: var(--panel); stroke: var(--ink); stroke-width: 1.2; }
@@ -1641,6 +1642,35 @@ function wrapText(text, maxW, maxLines) {
   else { let l = lines[maxLines - 1]; while (l && measCtx.measureText(l + '…').width > maxW) l = l.slice(0, -1); lines[maxLines - 1] = l + '…'; }
   return lines;
 }
+// ---------- コントロールワード・ステータスワード・制御モードの意味 ----------
+// D2000（6040h）: CiA402 のコマンド＋使っているビット
+function cwMeaning(v, short) {
+  const cmd = (v & 0x80) ? ['Fault reset', '異常リセット'] : (v & 0x02) === 0 ? ['Disable voltage', '電圧遮断'] : (v & 0x06) === 0x02 ? ['Quick stop', 'クイックストップ']
+    : (v & 0x87) === 0x06 ? ['Shutdown', 'Shutdown（6）'] : (v & 0x8F) === 0x07 ? ['Switch on', 'Switch on（7）'] : (v & 0x8F) === 0x0F ? ['Enable op', 'Enable operation（15）'] : ['?', '定義なし'];
+  if (short) return cmd[0];
+  const ex = [[4, '始動・JOG 正転'], [5, 'JOG 逆転'], [8, '一時停止']].filter(([b]) => (v >> b) & 1).map(([, t]) => t);
+  return [cmd[1], ...ex].join('・');
+}
+// D1000（6041h）: CiA402 の状態＋立っているフラグ
+function swMeaning(v, short) {
+  const st = (v & 0x4F) === 0x40 ? 'スイッチオン禁止' : (v & 0x6F) === 0x21 ? 'スイッチオン可' : (v & 0x6F) === 0x23 ? 'スイッチオン'
+    : (v & 0x6F) === 0x27 ? '運転有効' : (v & 0x6F) === 0x07 ? 'クイックストップ中' : (v & 0x0F) === 0x08 || (v & 0x0F) === 0x0F ? '異常' : '定義なし';
+  if (short) return st;
+  const ex = [[7, '警告'], [10, '到達'], [12, '始動受付・原点復帰完了'], [13, '原点復帰エラー']].filter(([b]) => (v >> b) & 1).map(([, t]) => t);
+  return [st, ...ex].join('・');
+}
+// D2001・D1001（6060h・6061h）: 制御モード
+const modeMeaning = (v, short) => ({ [-101]: ['pt', 'pt ポイントテーブル'], [-100]: ['jg', 'jg JOG'], 6: ['hm', 'hm 原点復帰'], 0: ['なし', 'モードなし'] }[v] || ['?', '使えないモード'])[short ? 0 : 1];
+// D の番号と値から意味を返す。対象外は null
+function wordMeaning(n, v, short) {
+  if (n === RWW) return cwMeaning(v & 0xFFFF, short);
+  if (n === RWR) return swMeaning(v & 0xFFFF, short);
+  if (n === RWW + 1 || n === RWR + 1) return modeMeaning(v, short);
+  return null;
+}
+const isMeaningDev = a => a && a.k === 'dev' && a.t === 'D' && [RWW, RWR, RWW + 1, RWR + 1].includes(a.n);
+// 「D2000=15」のあとに意味を付けた値の表示
+const valWithMeaning = a => { const v = rdWord(a), m = isMeaningDev(a) ? wordMeaning(a.n, v) : null; return `${a.raw.replace(/\.[0-9A-F]$/, '')}=${v}${m ? ' ' + m : ''}`; };
 function cmtSvg(dev, x, y, maxW, anchor, maxLines) {
   if (!showCmt()) return '';
   const t = cmtOf(dev); if (!t) return '';
@@ -1803,7 +1833,7 @@ function buildLadder() {
           const vEl = 'v' + g.id;
           inner += `<text x="${cx}" y="${yy + 23}" text-anchor="middle" class="val" id="${vEl}"></text>`;
           if (n.a.k === 'dev') inner += cmtSvg(n.a.raw, cx, yy + 35, x2 - x1 - 8, 'middle', 1);
-          ladRefs.push({ g: g.id, node: n, val: vEl, fn: () => [n.a, n.b].filter(a => a.k === 'dev').map(a => `${a.raw}=${rdWord(a)}`).join(' ') });
+          ladRefs.push({ g: g.id, node: n, val: vEl, fn: () => [n.a, n.b].filter(a => a.k === 'dev').map(valWithMeaning).join(' ') });
         } else {
           inner += `<path d="M${x1} ${yy}H${cx - 6}M${cx + 6} ${yy}H${x2}" class="w"/>`;
           inner += `<rect x="${cx - 10}" y="${yy - 11}" width="20" height="22" class="hl"/>`;
@@ -1811,8 +1841,15 @@ function buildLadder() {
           if (n.mode === 'i') inner += `<path d="M${cx - 6} ${yy + 9}L${cx + 6} ${yy - 9}" class="w2"/>`;
           if (n.mode === 'p' || n.mode === 'f') inner += `<text x="${cx}" y="${yy + 4}" text-anchor="middle" class="dev">${n.mode === 'p' ? '↑' : '↓'}</text>`;
           inner += `<text x="${cx}" y="${yy - 15}" text-anchor="middle" class="dev">${esc(n.a.raw)}</text>`;
-          inner += cmtSvg(n.a.raw, cx, yy + 24, CW - 6, 'middle', 2);
-          ladRefs.push({ g: g.id, node: n });
+          if (isMeaningDev(n.a)) {
+            const vEl = 'v' + g.id;
+            inner += `<text x="${cx}" y="${yy + 23}" text-anchor="middle" class="val mean" id="${vEl}"></text>`;
+            inner += cmtSvg(n.a.raw, cx, yy + 35, CW - 6, 'middle', 1);
+            ladRefs.push({ g: g.id, node: n, val: vEl, fn: () => wordMeaning(n.a.n, rdWordDev(n.a), true) });
+          } else {
+            inner += cmtSvg(n.a.raw, cx, yy + 24, CW - 6, 'middle', 2);
+            ladRefs.push({ g: g.id, node: n });
+          }
         }
         parts.push(g.open + inner + '</g>');
         return;
@@ -1841,16 +1878,18 @@ function buildLadder() {
         inner += `<ellipse cx="${cx}" cy="${yy}" rx="13" ry="11" class="hl"/>`;
         inner += `<path d="M${cx - 8} ${yy - 10}Q${cx - 14} ${yy} ${cx - 8} ${yy + 10}M${cx + 8} ${yy - 10}Q${cx + 14} ${yy} ${cx + 8} ${yy + 10}" class="w2"/>`;
         inner += `<text x="${cx}" y="${yy - 15}" text-anchor="middle" class="dev">${esc(o.args[0].raw)}${o.kind === 'tc' ? ' ' + esc(o.args[1].raw) : ''}</text>`;
-        if (o.kind === 'tc') inner += `<text x="${cx}" y="${yy + 24}" text-anchor="middle" class="val" id="${vEl}"></text>`;
-        inner += cmtSvg(o.args[0].raw, cx, yy + (o.kind === 'tc' ? 36 : 24), 76, 'middle', o.kind === 'tc' ? 1 : 2);
-        ladRefs.push({ g: g.id, out: o, coil: true, val: o.kind === 'tc' ? vEl : null, fn: () => `現在値 ${rdWord(o.args[0])}` });
+        const mean = o.kind === 'out' && isMeaningDev(o.args[0]);
+        if (o.kind === 'tc' || mean) inner += `<text x="${cx}" y="${yy + 24}" text-anchor="middle" class="val${mean ? ' mean' : ''}" id="${vEl}"></text>`;
+        inner += cmtSvg(o.args[0].raw, cx, yy + (o.kind === 'tc' || mean ? 36 : 24), 76, 'middle', o.kind === 'tc' || mean ? 1 : 2);
+        const a0 = o.args[0];
+        ladRefs.push({ g: g.id, out: o, coil: true, val: o.kind === 'tc' || mean ? vEl : null, fn: mean ? () => wordMeaning(a0.n, rdWordDev(a0), true) : () => `現在値 ${rdWord(a0)}` });
       } else {
         inner += `<rect x="${outX}" y="${yy - 12}" width="${railR - outX}" height="24" class="box"/>`;
         inner += `<text x="${outX + 8}" y="${yy + 4}" class="btxt">${esc(o.label)}</text>`;
         inner += `<text x="${outX + 8}" y="${yy + 25}" class="val" id="${vEl}"></text>`;
         if (odev) inner += cmtSvg(odev.raw, outX + 8, yy + 37, railR - outX - 16, 'start', 1);
         let fn = null;
-        if (o.kind === 'mov' || o.kind === 'bin' || o.kind === 'mul' || o.kind === 'inc' || o.kind === 'arith' || o.kind === 'rstw') { const d = o.args[o.args.length - 1]; fn = () => `${d.raw}=${rdWord(d)}`; }
+        if (o.kind === 'mov' || o.kind === 'bin' || o.kind === 'mul' || o.kind === 'inc' || o.kind === 'arith' || o.kind === 'rstw') { const d = o.args[o.args.length - 1]; fn = () => valWithMeaning(d); }
         ladRefs.push({ g: g.id, out: o, val: fn ? vEl : null, fn });
       }
       parts.push(g.open + inner + '</g>');
