@@ -59,7 +59,7 @@ img { max-width: 100%; }
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
-.wrap { max-width: 1480px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 2400px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 header.top { border-bottom: 1px solid var(--line); }
 header.top .wrap { padding-block: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
 h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 0; letter-spacing: .02em; text-wrap: balance; }
@@ -188,8 +188,10 @@ details summary { cursor: pointer; font-weight: 600; }
 @media (max-width: 760px) { .cols2 { grid-template-columns: minmax(0, 1fr); } }
 /* ダッシュボード */
 .dash { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; padding-block: 14px 0; align-items: start; }
-.s4 { grid-column: span 4; } .s6 { grid-column: span 6; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
-@media (max-width: 960px) { .s4, .s6, .s8 { grid-column: span 12; } }
+.s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s6 { grid-column: span 6; } .s8 { grid-column: span 8; } .s9 { grid-column: span 9; } .s12 { grid-column: span 12; }
+/* 4列のままだと狭い画面幅では2列にする */
+@media (max-width: 1280px) { .s3 { grid-column: span 6; } .s9 { grid-column: span 12; } }
+@media (max-width: 960px) { .s3, .s4, .s6, .s8, .s9 { grid-column: span 12; } }
 .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; min-width: 0; display: flex; flex-direction: column; }
 .pane-h { display: flex; align-items: center; gap: 6px 8px; padding: 7px 10px 7px 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .pane-h h2 { flex: 0 1 auto; min-width: 0; }
@@ -273,7 +275,7 @@ details summary { cursor: pointer; font-weight: 600; }
 
 <main class="wrap">
   <div class="dash" id="dash">
-    <section class="pane s8" data-pane="mach" aria-label="機械">
+    <section class="pane s3" data-pane="mach" aria-label="機械">
       <header class="pane-h"><button type="button" class="grip" aria-label="機械のペインを移動（矢印キーでも動く）">⠿</button><h2>機械（ボールねじ リード 10 mm、指令単位 1 µm）</h2><span class="extra hint" id="machMsg"></span></header>
       <div class="pane-b">
         <canvas id="mach" aria-label="ボールねじ軸の図。テーブル位置、近点ドグ、ストロークエンドを表示"></canvas>
@@ -287,7 +289,7 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s4" data-pane="panel" aria-label="操作盤">
+    <section class="pane s3" data-pane="panel" aria-label="操作盤">
       <header class="pane-h"><button type="button" class="grip" aria-label="操作盤のペインを移動（矢印キーでも動く）">⠿</button><h2>操作盤（X・Y）</h2><span class="extra"></span></header>
       <div class="pane-b">
         <div class="panel-io" id="panel"></div>
@@ -305,7 +307,7 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s12" data-pane="block" aria-label="構成ブロック図">
+    <section class="pane s3" data-pane="block" aria-label="構成ブロック図">
       <header class="pane-h"><button type="button" class="grip" aria-label="構成ブロック図のペインを移動（矢印キーでも動く）">⠿</button><h2>構成ブロック図</h2><span class="extra hint">信号が流れている経路は青い破線が動く</span></header>
       <div class="pane-b">
         <figure class="bdfig">
@@ -452,14 +454,14 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s6" data-pane="ladder" aria-label="ラダー">
+    <section class="pane s3" data-pane="ladder" aria-label="ラダー">
       <header class="pane-h"><button type="button" class="grip" aria-label="ラダーのペインを移動（矢印キーでも動く）">⠿</button><h2>ラダー（モニタ中）</h2><span class="extra hint" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span>青い接点・コイルが導通中。デバイスを押すとコメントを編集</span><label style="display:inline-flex;gap:4px;align-items:center;color:var(--ink)"><input type="checkbox" id="cmtShow" checked> コメント表示</label></span></header>
       <div class="pane-b">
         <div class="ladwrap"><svg class="lad" id="lad" xmlns="http://www.w3.org/2000/svg"></svg></div>
       </div>
     </section>
 
-    <section class="pane s6" data-pane="docs" aria-label="編集と資料">
+    <section class="pane s3" data-pane="docs" aria-label="編集と資料">
       <header class="pane-h"><button type="button" class="grip" aria-label="編集と資料のペインを移動（矢印キーでも動く）">⠿</button><h2>編集と資料</h2><span class="extra"></span></header>
       <div class="pane-b">
         <div class="tabs" role="tablist" aria-label="編集と資料" id="tabs">
@@ -553,7 +555,7 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s12" data-pane="timing" aria-label="タイミングチャート">
+    <section class="pane s3" data-pane="timing" aria-label="タイミングチャート">
       <header class="pane-h"><button type="button" class="grip" aria-label="タイミングチャートのペインを移動（矢印キーでも動く）">⠿</button><h2>タイミングチャート</h2><span class="extra"><span class="chip ok" id="tcState">サンプリング中</span></span></header>
       <div class="pane-b">
         <div class="tcbar">
@@ -574,14 +576,14 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s6" data-pane="trace" aria-label="トレース">
+    <section class="pane s3" data-pane="trace" aria-label="トレース">
       <header class="pane-h"><button type="button" class="grip" aria-label="トレースのペインを移動（矢印キーでも動く）">⠿</button><h2>トレース（直近 4 秒）</h2><span class="extra hint">速度・偏差・トルク</span></header>
       <div class="pane-b">
         <canvas id="trace" aria-label="速度・偏差・トルクのトレース"></canvas>
       </div>
     </section>
 
-    <section class="pane s6" data-pane="devmon" aria-label="デバイスモニタ">
+    <section class="pane s3" data-pane="devmon" aria-label="デバイスモニタ">
       <header class="pane-h"><button type="button" class="grip" aria-label="デバイスモニタのペインを移動（矢印キーでも動く）">⠿</button><h2>デバイスモニタ</h2><span class="extra hint">プログラムで使うデバイス</span></header>
       <div class="pane-b">
         <div class="tablewrap"><table><thead><tr><th>デバイス</th><th style="text-align:right">値</th><th>コメント</th></tr></thead><tbody id="devmon"></tbody></table></div>
@@ -1872,7 +1874,8 @@ $('tcArm').addEventListener('click', () => {
 $('tcClr').addEventListener('click', () => { tc.curA = tc.curB = null; tcCurText(); });
 
 // ---------- ペインの並べ替え・幅・たたむ ----------
-const LAYOUT_KEY = 'j5g-layout', SPANS = [4, 6, 8, 12], SPAN_L = { 4: '1/3', 6: '1/2', 8: '2/3', 12: '全幅' };
+// 初期配置を4列にしたので保存キーを変え、以前の並びを引き継がない
+const LAYOUT_KEY = 'j5g-layout-4col', SPANS = [3, 4, 6, 8, 9, 12], SPAN_L = { 3: '1/4', 4: '1/3', 6: '1/2', 8: '2/3', 9: '3/4', 12: '全幅' };
 const dash = $('dash');
 const spanOf = el => SPANS.find(s => el.classList.contains('s' + s)) || 6;
 const DEFAULT_LAYOUT = [...dash.children].map(el => [el.dataset.pane, spanOf(el), 0]);
