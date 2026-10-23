@@ -67,7 +67,38 @@ header p { margin: 0; color: var(--muted); max-width: 95ch; }
 h2 { font-family: var(--font-display); font-weight: 700; font-size: 15px; margin: 0; }
 code, .mono { font-family: var(--font-data); }
 
-.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+.bar { background: var(--bg); border-bottom: 1px solid var(--line); }
+/* バーと機械・操作盤は画面上部に固定し、下のペインだけスクロールする（狭い・低い画面では、固定すると下が見えなくなるので固定しない） */
+.topfix { background: var(--bg); border-bottom: 1px solid var(--line); }
+@media (min-width: 1600px) and (min-height: 760px) { .topfix { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; } }
+.toprow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 10px; padding-block: 8px; align-items: start; }
+@media (max-width: 1280px) { .toprow { grid-template-columns: minmax(0, 1fr); } }
+.toprow .pane-h { padding: 3px 10px; }
+.toprow .pane-h h2 { font-size: 13px; }
+.toprow .pane-b { padding: 6px 10px; gap: 6px; }
+.toprow .readouts { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.toprow .ro { padding: 2px 8px; }
+.toprow .ro .v { font-size: 15px; }
+.pbody { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 8px 12px; align-items: start; }
+@media (max-width: 760px) { .pbody { grid-template-columns: minmax(0, 1fr); } }
+.pleft, .pright { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.toprow .panel-io { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2px; }
+@media (max-width: 1599px) { .toprow .panel-io { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.toprow .pb { padding: 3px 2px; }
+.toprow .pb .cap { width: 28px; height: 28px; }
+.toprow .sw .cap { width: 34px; }
+.toprow .sw .cap::after { width: 12px; height: 16px; } .toprow .sw.on .cap::after { left: 13px; }
+.sws { display: flex; gap: 6px; flex-wrap: wrap; }
+.sws .dsw { flex: 1 1 260px; padding: 4px 8px; }
+.toprow .amp { padding: 6px 10px; }
+.toprow .amp b { font-size: 20px; }
+/* タイトル（クリックで説明のモーダル） */
+.ttl { font: 700 15px var(--font-display); letter-spacing: .02em; background: none; border: 0; padding: 2px 4px; color: var(--ink); cursor: pointer; }
+.ttl:hover { text-decoration: underline; text-underline-offset: 3px; }
+#about { max-width: min(680px, calc(100vw - 32px)); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; }
+#about::backdrop { background: rgba(0, 0, 0, .5); }
+#about h2 { margin: 0 0 8px; font: 700 18px var(--font-display); }
+#about form { display: flex; justify-content: flex-end; margin-top: 12px; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
 .bar .wrap { padding-block: 8px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .bar .sp { flex: 1; }
@@ -103,7 +134,7 @@ select { font-family: var(--font-body); }
 .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.crit { color: var(--crit); }
 
 /* 機械 */
-#mach { width: 100%; height: 200px; display: block; }
+#mach { width: 100%; height: 176px; display: block; }
 .readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .ro { border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; min-width: 0; }
 .ro .k { font-size: 11px; color: var(--muted); }
@@ -277,13 +308,14 @@ details summary { cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
-<header class="top">
-  <div class="wrap">
-    <h1>J5 サーボ制御シミュレータ</h1>
-    <p>FX5UC-64MT/D の内蔵 Ethernet から CC-Link IE フィールドネットワーク Basic で MR-J5-40G を直結し、位置決めモード（ポイントテーブル方式）でボールねじ軸を動かす想定です。GX Works3 のニーモニックでラダーを書き換えて書き込むと、コントロールワードとステータスワードのやり取りが変わり、機械の動きが変わります。学習用の簡易モデルで、実機の値ではありません。</p>
-  </div>
-</header>
+<!-- 説明（タイトルをクリックで開く。中身はモードに合わせて組み立てる） -->
+<dialog id="about" aria-labelledby="aboutTtl">
+  <h2 id="aboutTtl">J5 サーボ制御シミュレータ</h2>
+  <div id="aboutBody" class="notes"></div>
+  <form method="dialog"><button class="primary">閉じる</button></form>
+</dialog>
 
+<div class="topfix">
 <div class="bar">
   <div class="wrap">
     <div class="seg" role="radiogroup" aria-label="CPU の RUN/STOP">
@@ -292,6 +324,7 @@ details summary { cursor: pointer; font-weight: 600; }
     </div>
     <button type="button" class="primary" id="write">変換＋書込み（F4）</button>
     <span class="chip ok" id="progState">書込み済み</span>
+    <button type="button" class="ttl" id="aboutBtn" aria-haspopup="dialog" title="クリックで説明を表示">J5 サーボ制御シミュレータ</button>
     <span class="sp"></span>
     <span class="hint">No. 指定</span>
     <div class="seg" role="radiogroup" aria-label="ポイントテーブル No. の指定方式">
@@ -309,11 +342,9 @@ details summary { cursor: pointer; font-weight: 600; }
     <button type="button" id="power">電源再投入</button>
   </div>
 </div>
-
-<main class="wrap">
-  <div class="dash" id="dash">
-    <section class="pane s3" data-pane="mach" aria-label="機械">
-      <header class="pane-h"><button type="button" class="grip" aria-label="機械のペインを移動（矢印キーでも動く）">⠿</button><h2>機械（ボールねじ リード 10 mm、指令単位 1 µm）</h2><span class="extra hint" id="machMsg"></span></header>
+<div class="wrap toprow">
+    <section class="pane" data-pane="mach" aria-label="機械">
+      <header class="pane-h"><h2>機械（ボールねじ リード 10 mm、指令単位 1 µm）</h2><span class="extra hint" id="machMsg"></span></header>
       <div class="pane-b">
         <canvas id="mach" aria-label="ボールねじ軸の図。テーブル位置、近点ドグ、ストロークエンドを表示"></canvas>
         <div class="readouts">
@@ -326,10 +357,13 @@ details summary { cursor: pointer; font-weight: 600; }
       </div>
     </section>
 
-    <section class="pane s3" data-pane="panel" aria-label="操作盤">
-      <header class="pane-h"><button type="button" class="grip" aria-label="操作盤のペインを移動（矢印キーでも動く）">⠿</button><h2>操作盤（X・Y）</h2><span class="extra"></span></header>
+    <section class="pane" data-pane="panel" aria-label="操作盤">
+      <header class="pane-h"><h2>操作盤（X・Y）</h2><span class="extra"></span></header>
       <div class="pane-b">
+        <div class="pbody">
+        <div class="pleft">
         <div class="panel-io" id="panel"></div>
+        <div class="sws">
         <div class="dsw" id="dsw" hidden>
           <div class="body">
             <button type="button" id="dswUp" aria-label="数字を 1 増やす">▲</button>
@@ -351,20 +385,29 @@ details summary { cursor: pointer; font-weight: 600; }
             <span class="hint">0〜A で 50〜150 %（10 % 刻み）。B〜F は 150 %</span>
           </div>
         </div>
-        <div class="lamps" id="lampsY"></div>
+        </div>
+        </div>
+        <div class="pright">
         <div class="amp">
           <div><div class="nm">MR-J5-40G 表示</div><b id="ampDisp">----</b><div class="st" id="ampState"></div></div>
           <div class="l">
             <span id="a-link"><i></i>LINK</span><span id="a-dog"><i></i>DOG</span><span id="a-lsp"><i></i>LSP</span><span id="a-lsn"><i></i>LSN</span><span id="a-alm" class="r"><i></i>ALM</span>
           </div>
         </div>
+        <div class="lamps" id="lampsY"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button type="button" id="fault">サーボ異常を起こす</button>
-          <span class="hint">LSP・LSN・DOG はサーボアンプに配線（PLC の X ではない）。</span>
+          <span class="hint" title="LSP・LSN・DOG はサーボアンプに配線（PLC の X ではない）">LSP・LSN・DOG はアンプに配線</span>
+        </div>
+        </div>
         </div>
       </div>
     </section>
+</div>
+</div>
 
+<main class="wrap">
+  <div class="dash" id="dash">
     <section class="pane s3" data-pane="block" aria-label="構成ブロック図">
       <header class="pane-h"><button type="button" class="grip" aria-label="構成ブロック図のペインを移動（矢印キーでも動く）">⠿</button><h2>構成ブロック図</h2><span class="extra hint">信号が流れている経路は青い破線が動く</span></header>
       <div class="pane-b">
@@ -1394,7 +1437,8 @@ const drv = {
 // ---------- 入力（操作盤） ----------
 const PANEL = [
   { x: 0, nm: '起動', c: 'green' }, { x: 1, nm: '停止', c: 'red' }, { x: 2, nm: '原点復帰', c: 'blue' }, { x: 6, nm: '異常<br>リセット', c: 'yellow' },
-  { x: 3, nm: 'JOG+', c: '' }, { x: 4, nm: 'JOG−', c: '' }, { x: 5, nm: 'サーボ ON', sw: true }, { x: 7, nm: '非常停止', sw: true, estop: true },
+  // 機械図の左が LSN（−）側なので、JOG− を左、JOG+ を右に置く（割り付けは X3=JOG+、X4=JOG− のまま）
+  { x: 4, nm: 'JOG−', c: '' }, { x: 3, nm: 'JOG+', c: '' }, { x: 5, nm: 'サーボ ON', sw: true }, { x: 7, nm: '非常停止', sw: true, estop: true },
 ];
 const panelIn = new Uint8Array(32);
 panelIn[5] = 1;
@@ -1553,6 +1597,7 @@ function setModes(mode, ovr, load) {
     return;
   }
   ptMode = mode; ovrOn = ovr;
+  if ($('about').open) renderAbout();
   $('ptsel-' + mode).checked = true; $(ovr ? 'ovr-on' : 'ovr-off').checked = true;
   $('dsw').hidden = mode !== 'sel'; $('rsw').hidden = !ovr;
   setDsw(dswVal); setRsw(rswVal);
@@ -1563,6 +1608,26 @@ function setModes(mode, ovr, load) {
   try { localStorage.setItem('j5g-src', src.value); } catch (e) {}
   writeProgram();
 }
+// ---------- 説明（タイトルをクリックで開くモーダル。今のモードに合わせて組み立てる） ----------
+function renderAbout() {
+  const sel = ptMode === 'sel', ov = ovrOn;
+  const key = Object.keys(SAMPLES).find(k => SAMPLES[k] === written);
+  const run = key ? $('sample').querySelector(`option[value="${key}"]`)?.textContent : '自作のラダー';
+  $('aboutBody').innerHTML = `
+    <p>FX5UC-64MT/D の内蔵 Ethernet から CC-Link IE フィールドネットワーク Basic で MR-J5-40G を直結し、位置決めモード（ポイントテーブル方式）でボールねじ軸を動かす想定です。GX Works3 のニーモニックでラダーを書き換えて書き込むと、コントロールワードとステータスワードのやり取りが変わり、機械の動きが変わります。</p>
+    <ul>
+      <li><b>No. 指定（${sel ? 'セレクタ' : 'ラダー'}）</b>: ${sel
+        ? '操作盤のデジタルスイッチ（X10〜X13、BCD）で No.1〜4 を選び、起動（X0）でその No. へ動きます。0・5〜9 では始動しません。'
+        : 'ポイントテーブル No. はラダーの <code>MOV K1 D2002</code> で決めます。起動（X0）で No.1 へ動きます。'}</li>
+      <li><b>オーバーライド（${ov ? 'ON' : 'OFF'}）</b>: ${ov
+        ? 'ロータリースイッチ（X14〜X17、16 進）で 50〜150 % を選び、RWw3（D2003）からサーボへ送ります。位置決め・JOG・原点復帰の速度に、運転中でもすぐ効きます。'
+        : '速度は 100 % のままです（D2003 に 100 を書きます）。'}</li>
+      <li><b>書き込み中のラダー</b>: ${esc(run || '')}</li>
+      <li>操作盤の JOG− は機械図の左（LSN 側）、JOG+ は右（LSP 側）へ動きます。</li>
+    </ul>
+    <p class="hint">非公式の学習用ツールです。三菱電機株式会社とは関係ありません。数値は実機の値ではない簡易モデルで、割り付けや設定には実機で確かめていない例を含みます。</p>`;
+}
+$('aboutBtn').addEventListener('click', () => { renderAbout(); $('about').showModal(); });
 $('dswUp').addEventListener('click', () => setDsw(dswVal + 1));
 $('dswDn').addEventListener('click', () => setDsw(dswVal - 1));
 document.querySelectorAll('input[name=ptsel]').forEach(r => r.addEventListener('change', () => setModes(r.value, ovrOn, true)));
@@ -1917,13 +1982,13 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 let colors = {};
 function readColors() { for (const k of ['ink', 'muted', 'line', 'grid', 'cmd', 'fb', 'on', 'ok', 'warn', 'crit', 'metal', 'panel', 'bg', 'chip']) colors[k] = css('--' + k); colors.data = css('--font-data'); colors.body = css('--font-body'); }
 function drawMach() {
-  const cv = $('mach'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 200;
+  const cv = $('mach'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 176;
   if (!W) return;
   if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = H * dpr; }
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
   const C = colors, x0 = 84, x1 = W - 14, mm0 = -40, mm1 = 445;
   const X = mm => x0 + (mm - mm0) / (mm1 - mm0) * (x1 - x0);
-  const pos = mot.pos(), yS = 112;
+  const pos = mot.pos(), yS = 90;
   ctx.fillStyle = C.chip; ctx.fillRect(X(mm0), yS + 16, X(mm1) - X(mm0), 10);
   ctx.fillStyle = C.metal; ctx.fillRect(X(MECH.endLo) - 6, yS - 26, 6, 52); ctx.fillRect(X(MECH.endHi), yS - 26, 6, 52);
   ctx.strokeStyle = C.metal; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(x0 - 6, yS); ctx.lineTo(X(MECH.endHi), yS); ctx.stroke();
@@ -1948,11 +2013,11 @@ function drawMach() {
   ctx.fillStyle = mach.dog ? C.on : C.muted; ctx.font = '600 11px ' + C.data; ctx.fillText('DOG', X((MECH.dogLo + MECH.dogHi) / 2), yS + 58);
   ctx.fillStyle = C.muted; ctx.font = '10px ' + C.data; ctx.textAlign = 'center';
   for (let mm = 0; mm <= 400; mm += 50) { const x = X(mm); ctx.fillRect(x, yS + 26, 1, 4); ctx.fillText(String(mm), x, yS + 80); }
-  ctx.textAlign = 'right'; ctx.fillText('目盛: mm（機械座標）', x1, 12);
+  ctx.textAlign = 'left'; ctx.fillText('mm（機械座標）', 6, yS + 80);
   const xo = X(drv.offset);
-  ctx.strokeStyle = C.cmd; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xo, 18); ctx.lineTo(xo, yS + 24); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = C.cmd; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xo, 16); ctx.lineTo(xo, yS + 24); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = C.cmd; ctx.textAlign = xo > W - 160 ? 'right' : 'left'; ctx.font = '600 11px ' + C.body;
-  ctx.fillText(drv.homeDone || drv.offset !== MECH.start ? '位置実際値 0（原点）' : '位置実際値 0（電源投入位置）', xo + (xo > W - 160 ? -4 : 4), 28);
+  ctx.fillText(drv.homeDone || drv.offset !== MECH.start ? '位置実際値 0（原点）' : '位置実際値 0（電源投入位置）', xo + (xo > W - 160 ? -4 : 4), 12);
   const xc = X(drv.cmd);
   ctx.fillStyle = C.cmd; ctx.beginPath(); ctx.moveTo(xc, yS - 46); ctx.lineTo(xc - 6, yS - 56); ctx.lineTo(xc + 6, yS - 56); ctx.closePath(); ctx.fill();
   const xt = X(pos), tw = 58;
