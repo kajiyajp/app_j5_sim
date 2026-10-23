@@ -96,7 +96,7 @@ select { font-family: var(--font-body); }
 .seg label:first-of-type { border-left: 0; }
 #run-run:checked + label { background: var(--ok); color: #fff; }
 #run-stop:checked + label { background: var(--warn); color: #fff; }
-.seg input[name=ptsel]:checked + label { background: var(--ink); color: var(--bg); }
+.seg input[name=ptsel]:checked + label, .seg input[name=ovr]:checked + label { background: var(--ink); color: var(--bg); }
 .seg input:focus-visible + label { outline: 2px solid var(--on); outline-offset: -2px; }
 
 .chip { font: 600 12px var(--font-body); padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
@@ -134,6 +134,12 @@ select { font-family: var(--font-body); }
 .dsw .nm { font-size: 12px; font-weight: 600; }
 .dsw .bits { display: flex; gap: 8px; font: 11px var(--font-data); color: var(--muted); flex-wrap: wrap; }
 .dsw .bits span.on { color: var(--on); font-weight: 600; }
+/* ロータリースイッチ（TOSOKU 製を想定、16 進 1 桁）。オーバーライド ON のときだけ表示 */
+.rsw .knob { width: 46px; height: 46px; border-radius: 50%; background: #2B2B2B; border: 3px solid #4A4A4A; position: relative; cursor: pointer; flex: none; }
+.rsw .knob::after { content: ""; position: absolute; left: 50%; top: 4px; width: 3px; height: 14px; margin-left: -1.5px; background: #F2B630; border-radius: 2px; transform-origin: 50% 16px; transform: rotate(var(--ang, 0deg)); }
+.rsw .knob b { position: absolute; inset: 0; display: grid; place-items: center; font: 600 14px var(--font-data); color: #FFF; pointer-events: none; }
+.rsw .ctl { display: inline-flex; gap: 4px; }
+.rsw .ctl button { font: 12px var(--font-data); padding: 2px 8px; }
 .lamps { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
 .lamp { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .lamp i { width: 12px; height: 12px; border-radius: 50%; background: var(--chip); border: 1px solid var(--line); display: inline-block; }
@@ -282,6 +288,11 @@ details summary { cursor: pointer; font-weight: 600; }
       <input type="radio" name="ptsel" id="ptsel-lad" value="lad" checked><label for="ptsel-lad" title="ラダーの MOV K1 D2002 で No. を決める">ラダー</label>
       <input type="radio" name="ptsel" id="ptsel-sel" value="sel"><label for="ptsel-sel" title="操作盤のデジタルスイッチ（X10〜X13）で No. を選ぶ">セレクタ</label>
     </div>
+    <span class="hint">オーバーライド</span>
+    <div class="seg" role="radiogroup" aria-label="速度オーバーライド">
+      <input type="radio" name="ovr" id="ovr-off" value="off" checked><label for="ovr-off" title="速度は 100 % のまま">OFF</label>
+      <input type="radio" name="ovr" id="ovr-on" value="on"><label for="ovr-on" title="操作盤のロータリースイッチ（X14〜X17）で 50〜150 %">ON</label>
+    </div>
     <label class="hint" for="speed">実行速度</label>
     <select id="speed"><option value="1">実時間</option><option value="0.5">1/2</option><option value="0.2">1/5</option><option value="0.05">1/20</option></select>
     <button type="button" id="resetLayout">レイアウトを戻す</button>
@@ -319,6 +330,15 @@ details summary { cursor: pointer; font-weight: 600; }
             <span class="nm">No. 選択 デジタルスイッチ（TOSOKU 想定・BCD）</span>
             <span class="bits" id="dswBits"></span>
             <span class="hint">1〜4 を選んで起動（X0）。0・5〜9 では始動しない</span>
+          </div>
+        </div>
+        <div class="dsw rsw" id="rsw" hidden>
+          <div class="knob" id="rswKnob" role="slider" tabindex="0" aria-label="オーバーライドのロータリースイッチ（クリックで右へ 1 つ、矢印キーでも回る）" aria-valuemin="0" aria-valuemax="15"><b id="rswDigit">5</b></div>
+          <div class="txt">
+            <span class="nm">オーバーライド ロータリースイッチ（TOSOKU 想定・16 進）</span>
+            <span class="bits" id="rswBits"></span>
+            <span class="ctl"><button type="button" id="rswDn" aria-label="左へ 1 つ回す">◀</button><button type="button" id="rswUp" aria-label="右へ 1 つ回す">▶</button><span class="hint" id="rswPct"></span></span>
+            <span class="hint">0〜A で 50〜150 %（10 % 刻み）。B〜F は 150 %</span>
           </div>
         </div>
         <div class="lamps" id="lampsY"></div>
@@ -508,6 +528,8 @@ details summary { cursor: pointer; font-weight: 600; }
               <option value="s2">サンプル 2: 自動往復（No.1 ↔ No.2）</option>
               <option value="s3">サンプル 3: 誤り例（いきなり 15 を書く）</option>
               <option value="s4">サンプル 4: セレクタ方式（デジタルスイッチで No.1〜4）</option>
+              <option value="s5">サンプル 5: オーバーライド（ラダー方式 ＋ ロータリースイッチ）</option>
+              <option value="s6">サンプル 6: オーバーライド（セレクタ方式 ＋ ロータリースイッチ）</option>
             </select>
             <button type="button" id="loadSample">読み込む</button>
           </div>
@@ -543,6 +565,7 @@ details summary { cursor: pointer; font-weight: 600; }
             <li>JOG+（X3）を押すとモードが jg に切り替わり、押している間だけ動きます。</li>
             <li>原点復帰（X2）でモードを hm に切り替えて始動します。ドグ後端で止まり、位置実際値が 0 になります。</li>
             <li>起動（X0）でポイントテーブル No.1（300 mm）へ動きます。</li>
+            <li>上のバーの「オーバーライド」を ON にすると、操作盤にロータリースイッチ（X14〜X17、16 進）が出ます。0〜A で 50〜150 %、運転中に回してもすぐ速度が変わります（位置決め・JOG・原点復帰のすべて）。</li>
             <li>上のバーの「No. 指定」を「セレクタ」にすると、操作盤にデジタルスイッチ（X10〜X13、BCD）が出て、サンプル 4 が読み込まれます。スイッチで 1〜4 を選んで起動（X0）すると、その No. へ動きます。</li>
             <li>ニーモニックを書き換えて「変換＋書込み」（F4 か Ctrl+Enter）。RUN 中書込みとして、そのまま動作が変わります。</li>
           </ol>
@@ -577,7 +600,7 @@ details summary { cursor: pointer; font-weight: 600; }
             <li>接点: <code>LD LDI LDP LDF AND ANI ANDP ANDF OR ORI ORP ORF ANB ORB</code></li>
             <li>比較: <code>LD= LD&lt;&gt; LD&gt; LD&lt; LD&gt;= LD&lt;=</code>（AND・OR も同じ。32 ビットは <code>LDD=</code> など）</li>
             <li>出力: <code>OUT SET RST PLS PLF</code>、タイマ <code>OUT T0 K10</code>（100 ms 単位）、カウンタ <code>OUT C0 K5</code></li>
-            <li>転送・演算: <code>MOV DMOV MOVP INC DEC + - D+ D-</code>（P 付きは立上りで 1 回）</li>
+            <li>転送・演算: <code>MOV DMOV MOVP INC DEC + - D+ D- *</code>（<code>*</code> の積は 32 ビットで d・d+1 に入る）（P 付きは立上りで 1 回）</li>
             <li>変換: <code>BIN BINP</code>（BCD を BIN に。例 <code>BIN K1X10 D10</code>）</li>
             <li>デバイス: <code>X0〜X37 Y0〜Y37 M D T C SM400 SM402 SM412</code>、ワードのビット指定 <code>D1000.A</code>（.0〜.F）</li>
             <li>桁指定（読み出しのみ）: <code>K1X10</code>＝X10〜X13 の 4 点を 1 桁として読む（K1〜K4、X・Y・M）</li>
@@ -651,6 +674,7 @@ const RMAP = [
   [RWW + 0, 'RWw0', '6040h コントロールワード', 'b0 スイッチオン・b1 電圧有効・b2 クイックストップ解除・b3 運転有効・b4 始動（pt・hm）/ JOG 正転（jg）・b5 JOG 逆転（jg）・b7 異常リセット・b8 一時停止'],
   [RWW + 1, 'RWw1', '6060h 制御モード', '-101 ポイントテーブル（pt）・-100 JOG（jg）・6 原点復帰（hm）'],
   [RWW + 2, 'RWw2', 'ポイントテーブル指定', '始動する No.（1〜4）'],
+  [RWW + 3, 'RWw3', 'オーバーライド %', '位置決め・JOG・原点復帰の速度に掛ける（0 は 100 % 扱い、上限 200 %）。このシミュレータ独自の割り付け'],
   [RWW + 4, 'RWw4-5', 'JOG 速度（32 bit）', '単位 µm/s（50000 = 50 mm/s）'],
   [RWR + 0, 'RWr0', '6041h ステータスワード', 'b0 スイッチオン可・b1 スイッチオン・b2 運転有効（サーボ ON）・b3 異常・b4 電圧有効・b5 クイックストップ解除・b6 スイッチオン禁止・b7 警告・b9 リモート・b10 到達・b12 始動受付（pt）/ 原点復帰完了（hm）・b13 原点復帰エラー（hm）'],
   [RWR + 1, 'RWr1', '6061h 制御モード表示', '実際に切り替わった制御モード'],
@@ -663,6 +687,7 @@ const RCOM = Object.fromEntries(RMAP.map(r => ['D' + r[0], r[2]]));
 const IOC = {
   X0: '起動 PB', X1: '停止 PB（サンプル 1 は一時停止、2 はサイクル停止）', X2: '原点復帰 PB', X3: 'JOG+ PB', X4: 'JOG− PB', X5: 'サーボ ON SW', X6: '異常リセット PB', X7: '非常停止 SW',
   X10: 'デジタルスイッチ 1', X11: 'デジタルスイッチ 2', X12: 'デジタルスイッチ 4', X13: 'デジタルスイッチ 8',
+  X14: 'ロータリースイッチ 1', X15: 'ロータリースイッチ 2', X16: 'ロータリースイッチ 4', X17: 'ロータリースイッチ 8',
   Y0: '運転中ランプ', Y1: '原点復帰完了ランプ', Y2: '異常ランプ', Y3: '位置決め完了ランプ',
   SM400: '常時 ON', SM402: 'RUN 後 1 スキャン ON', SM412: '1 秒クロック',
 };
@@ -748,7 +773,12 @@ AND D1000.D
 OR D1000.3
 RST M10
 `;
-const S1 = SERVO_ON_OK + HOMING + String.raw`; ===== JOG（X3・X4）: モードを jg（-100）にする =====
+// オーバーライドを使わないサンプルは 100 % 固定（前に書いた値が D2003 に残らないように）
+const OVR_FIXED = String.raw`; ===== オーバーライドは使わない（100 % 固定）=====
+LD SM400
+MOV K100 D2003
+`;
+const S1 = SERVO_ON_OK + HOMING + OVR_FIXED + String.raw`; ===== JOG（X3・X4）: モードを jg（-100）にする =====
 LD X3
 OR X4
 ANI M10
@@ -790,7 +820,7 @@ LD X1
 OUT D2000.8
 `);
 
-const S2 =SERVO_ON_OK + HOMING + String.raw`; ===== 自動運転 M2: 起動 X0（原点復帰済み）で自己保持、停止 X1（サイクル停止）・非常停止・異常で切れる =====
+const S2 = SERVO_ON_OK + HOMING + OVR_FIXED + String.raw`; ===== 自動運転 M2: 起動 X0（原点復帰済み）で自己保持、停止 X1（サイクル停止）・非常停止・異常で切れる =====
 LD X0
 AND M40
 OR M2
@@ -877,7 +907,24 @@ AND M32
 SET M30
 MOV D10 D2002
 `;
-const SAMPLES = { s1: S1, s2: S2, s3: S1.replace(SERVO_ON_OK, SERVO_ON_NG), s4: S1.replace(PT_FIXED, PT_SELECT) };
+// オーバーライド: ロータリースイッチの値（0〜F）を 50〜150 % にして RWw3 へ
+const OVR = String.raw`; ===== オーバーライド: ロータリースイッチ（X14〜X17、16 進 1 桁）=====
+; 0〜A → 50〜150 %（10 % 刻み）: D11 × 10 ＋ 50（積は 32 ビットで D12・D13 に入る）
+LD SM400
+MOV K1X14 D11
+* D11 K10 D12
++ D12 K50 D14
+; B〜F は 150 % 止まり
+LD> D11 K10
+MOV K150 D14
+; オーバーライド率を RWw3 へ
+LD SM400
+MOV D14 D2003
+`;
+const SAMPLES = {
+  s1: S1, s2: S2, s3: S1.replace(SERVO_ON_OK, SERVO_ON_NG), s4: S1.replace(PT_FIXED, PT_SELECT),
+  s5: S1.replace(OVR_FIXED, OVR), s6: S1.replace(OVR_FIXED, OVR).replace(PT_FIXED, PT_SELECT),
+};
 
 // ---------- オペランド ----------
 function parseOperand(tok) {
@@ -983,6 +1030,12 @@ function parseOut(op, args, ln, err) {
     const e = writableWord(A[2]); if (e) { err(e); return null; }
     if (!k16(!!m[1], 0, 1)) return null;
     return { ...base, kind: 'arith', sign: m[2] === '+' ? 1 : -1, dbl: !!m[1], pulse: !!m[3] };
+  }
+  if ((m = op.match(/^\*(P?)$/))) {
+    if (!need(3) || !word(0) || !word(1)) return null;
+    const e = writableWord(A[2]); if (e) { err(e); return null; }
+    if (!k16(false, 0, 1)) return null;
+    return { ...base, kind: 'mul', pulse: !!m[1] };
   }
   if ((m = op.match(/^BIN(P?)$/))) {
     if (!need(2) || !word(0)) return null;
@@ -1162,6 +1215,8 @@ function execOut(o, cond) {
       break;
     }
     case 'mov': if (o.pulse ? rise : cond) wrWord(A[1], rdWord(A[0]), o.dbl); break;
+    // 16 ビット同士の積は 32 ビット（d・d+1）に入る
+    case 'mul': if (o.pulse ? rise : cond) wrWord(A[2], rdWord(A[0]) * rdWord(A[1]), true); break;
     case 'bin': if (o.pulse ? rise : cond) { const v = bcd2bin(rdWord(A[0])); if (v != null) wrWord(A[1], v); } break;
     case 'inc': if (o.pulse ? rise : cond) wrWord(A[0], rdWord(A[0]) + o.dir, o.dbl); break;
     case 'arith': if (o.pulse ? rise : cond) wrWord(A[2], rdWord(A[0]) + o.sign * rdWord(A[1]), o.dbl); break;
@@ -1210,6 +1265,7 @@ const ST = { SOD: 'スイッチオン禁止', RTSO: 'スイッチオン可', SO:
 const drv = {
   state: 'SOD', cw: 0, prevCw: 0, mode: MODE.PT, modeReq: MODE.PT, modeT: 0, tpt: 0, jogV: 0,
   alarm: 0, alarmMsg: '', warn: '', oeT: 0,
+  ovr: 100, // オーバーライド %（RWw3。0 は 100 % 扱い）
   cmd: MECH.start, v: 0, task: 'idle', target: 0, vt: 0, acc: 1, dec: 1, dwell: 0, no: 0, halting: false,
   offset: MECH.start, reached: true, ack: false, homeDone: false, homeErr: false, donePt: 0, oprPhase: 0, jogDir: 0,
   on() { return this.state === 'OE' || this.state === 'QSA'; },
@@ -1230,6 +1286,7 @@ const drv = {
     const cw = rw[0] & 0xFFFF, prev = this.cw;
     this.prevCw = prev; this.cw = cw;
     this.modeReq = rw[1]; this.tpt = rw[2]; this.jogV = rw[4];
+    this.ovr = rw[3] === 0 ? 100 : Math.max(0, Math.min(200, rw[3]));
     const rise = b => ((cw >> b) & 1) === 1 && ((prev >> b) & 1) === 0;
     // 状態遷移
     if (this.state === 'FAULT') { if (rise(7)) { this.alarm = 0; this.alarmMsg = ''; mot.crash = false; this.state = 'SOD'; } }
@@ -1283,11 +1340,13 @@ const drv = {
     if (lsWarn) this.warn = lsWarn; else if (this.warn.startsWith('AL.99')) this.warn = '';
     if (this.task === 'idle' || !on) { mot.step(dt, on); return; }
     if (this.task === 'dwell') { this.dwell -= dt; if (this.dwell <= 0) this.endPt(); mot.step(dt, on); return; }
+    // オーバーライドは位置決め・JOG・原点復帰のすべての速度に掛ける（運転中の変更もすぐ効く）
+    const ov = this.ovr / 100;
     let want;
     if (this.halting) want = 0;
-    else if (this.task === 'pos') { const rem = this.target - this.cmd; want = Math.sign(rem) * Math.min(this.vt, Math.sqrt(2 * this.dec * Math.abs(rem))); }
-    else if (this.task === 'jog') want = this.vt;
-    else want = -(this.oprPhase === 0 ? prm.oprV : prm.creep) / 60 * LEAD;
+    else if (this.task === 'pos') { const rem = this.target - this.cmd; want = Math.sign(rem) * Math.min(this.vt * ov, Math.sqrt(2 * this.dec * Math.abs(rem))); }
+    else if (this.task === 'jog') want = this.vt * ov;
+    else want = -(this.oprPhase === 0 ? prm.oprV : prm.creep) / 60 * LEAD * ov;
     const speedUp = Math.abs(want) > Math.abs(this.v) && (this.v === 0 || Math.sign(want) === Math.sign(this.v));
     const rate = speedUp ? this.acc : this.dec;
     if (this.v < want) this.v = Math.min(want, this.v + rate * dt); else this.v = Math.max(want, this.v - rate * dt);
@@ -1448,9 +1507,21 @@ document.querySelectorAll('input[name=run]').forEach(r => r.addEventListener('ch
 }));
 $('speed').addEventListener('change', e => { speed = +e.target.value; });
 
-// ---------- No. 指定方式（ラダー／セレクタ）とデジタルスイッチ ----------
-let ptMode = 'lad', dswVal = 1;
-const DSW_X = 8, MODE_SAMPLE = { lad: 's1', sel: 's4' }; // DSW_X: X10（8 進）は 8 番目
+// ---------- No. 指定方式（ラダー／セレクタ）・オーバーライドと操作盤のスイッチ ----------
+let ptMode = 'lad', dswVal = 1, ovrOn = false, rswVal = 5;
+// DSW_X: X10（8 進）は 8 番目、RSW_X: X14 は 12 番目。サンプルは No. 指定方式とオーバーライドの組み合わせで選ぶ
+const DSW_X = 8, RSW_X = 12, MODE_SAMPLE = { lad: 's1', sel: 's4', 'lad+ovr': 's5', 'sel+ovr': 's6' };
+// ロータリースイッチの値を X14〜X17 に 16 進で出し、表示を更新する
+function setRsw(v) {
+  rswVal = (v + 16) % 16;
+  for (let i = 0; i < 4; i++) panelIn[RSW_X + i] = ovrOn && ((rswVal >> i) & 1) ? 1 : 0;
+  const h = rswVal.toString(16).toUpperCase();
+  $('rswDigit').textContent = h;
+  $('rswKnob').style.setProperty('--ang', `${rswVal * 22.5}deg`);
+  $('rswKnob').setAttribute('aria-valuenow', String(rswVal)); $('rswKnob').setAttribute('aria-valuetext', h);
+  $('rswBits').innerHTML = [1, 2, 4, 8].map((w, i) => `<span class="${panelIn[RSW_X + i] ? 'on' : ''}">X${(RSW_X + i).toString(8)}=${w}</span>`).join('');
+  try { localStorage.setItem('j5g-rsw', String(rswVal)); } catch (e) {}
+}
 // デジタルスイッチの値を X10〜X13 に BCD で出し、表示を更新する
 function setDsw(v) {
   dswVal = (v + 10) % 10;
@@ -1460,13 +1531,14 @@ function setDsw(v) {
   try { localStorage.setItem('j5g-dsw', String(dswVal)); } catch (e) {}
 }
 // 方式を切り替え、操作盤の表示と（サンプルのままなら）ラダーを合わせる
-function setPtMode(mode, load) {
-  ptMode = mode; $('ptsel-' + mode).checked = true;
-  $('dsw').hidden = mode !== 'sel';
-  setDsw(dswVal);
-  try { localStorage.setItem('j5g-ptsel', mode); } catch (e) {}
+function setModes(mode, ovr, load) {
+  ptMode = mode; ovrOn = ovr;
+  $('ptsel-' + mode).checked = true; $(ovr ? 'ovr-on' : 'ovr-off').checked = true;
+  $('dsw').hidden = mode !== 'sel'; $('rsw').hidden = !ovr;
+  setDsw(dswVal); setRsw(rswVal);
+  try { localStorage.setItem('j5g-ptsel', mode); localStorage.setItem('j5g-ovr', ovr ? '1' : '0'); } catch (e) {}
   if (!load) return;
-  const key = MODE_SAMPLE[mode];
+  const key = MODE_SAMPLE[mode + (ovr ? '+ovr' : '')];
   $('sample').value = key;
   if (!Object.values(SAMPLES).includes(src.value)) { setState(`自作のラダーは置き換えていません（サンプル ${key.slice(1)} は「読み込む」で）`, 'warn'); return; }
   src.value = SAMPLES[key]; updGutter();
@@ -1475,7 +1547,15 @@ function setPtMode(mode, load) {
 }
 $('dswUp').addEventListener('click', () => setDsw(dswVal + 1));
 $('dswDn').addEventListener('click', () => setDsw(dswVal - 1));
-document.querySelectorAll('input[name=ptsel]').forEach(r => r.addEventListener('change', () => setPtMode(r.value, true)));
+document.querySelectorAll('input[name=ptsel]').forEach(r => r.addEventListener('change', () => setModes(r.value, ovrOn, true)));
+document.querySelectorAll('input[name=ovr]').forEach(r => r.addEventListener('change', () => setModes(ptMode, r.value === 'on', true)));
+$('rswUp').addEventListener('click', () => setRsw(rswVal + 1));
+$('rswDn').addEventListener('click', () => setRsw(rswVal - 1));
+$('rswKnob').addEventListener('click', () => setRsw(rswVal + 1));
+$('rswKnob').addEventListener('keydown', e => {
+  if (['ArrowRight', 'ArrowUp'].includes(e.key)) { e.preventDefault(); setRsw(rswVal + 1); }
+  if (['ArrowLeft', 'ArrowDown'].includes(e.key)) { e.preventDefault(); setRsw(rswVal - 1); }
+});
 $('power').addEventListener('click', () => {
   plcStop(); for (const k of [...S.d.keys()]) S.d.delete(k);
   Object.assign(drv, { state: 'SOD', cw: 0, prevCw: 0, mode: MODE.PT, alarm: 0, alarmMsg: '', warn: '', task: 'idle', v: 0, cmd: mot.pos(), offset: mot.pos(), reached: true, ack: false, homeDone: false, homeErr: false, donePt: 0, halting: false });
@@ -1515,12 +1595,13 @@ function buildPanel() {
 const DEF_COMMENTS = [
   ['X0', '起動 PB'], ['X1', '停止 PB'], ['X2', '原点復帰 PB'], ['X3', 'JOG+ PB'], ['X4', 'JOG− PB'], ['X5', 'サーボ ON SW'], ['X6', '異常リセット PB'], ['X7', '非常停止 SW'],
   ['X10', 'デジタルスイッチ 1'], ['X11', 'デジタルスイッチ 2'], ['X12', 'デジタルスイッチ 4'], ['X13', 'デジタルスイッチ 8'],
+  ['X14', 'ロータリースイッチ 1'], ['X15', 'ロータリースイッチ 2'], ['X16', 'ロータリースイッチ 4'], ['X17', 'ロータリースイッチ 8'],
   ['Y0', '運転中ランプ'], ['Y1', '原点復帰完了ランプ'], ['Y2', '異常ランプ'], ['Y3', '位置決め完了ランプ'],
   ['M2', '自動運転中'], ['M10', '原点復帰中'], ['M11', '原点復帰の始動'], ['M20', 'JOG 中'], ['M21', 'JOG 正転'], ['M22', 'JOG 逆転'],
   ['M30', '位置決め始動要求'], ['M31', '位置決めの始動'], ['M32', 'No. 範囲内（1〜4）'], ['M40', '原点復帰済み'], ['M100', 'サーボ ON 要求'],
-  ['T0', '往路のあとの待ち'], ['T1', '復路のあとの待ち'], ['D10', '選択 No.（デジタルスイッチ）'], ['D100', '工程番号'], ['D101', '往復回数'],
+  ['T0', '往路のあとの待ち'], ['T1', '復路のあとの待ち'], ['D10', '選択 No.（デジタルスイッチ）'], ['D11', 'ロータリースイッチの値'], ['D12', 'オーバーライド計算（積）'], ['D14', 'オーバーライド %'], ['D100', '工程番号'], ['D101', '往復回数'],
   ['D2000', 'コントロールワード 6040h'], ['D2000.4', '始動・JOG 正転'], ['D2000.5', 'JOG 逆転'], ['D2000.7', '異常リセット'], ['D2000.8', '一時停止'],
-  ['D2001', '制御モード 6060h'], ['D2002', 'ポイントテーブル指定'], ['D2004', 'JOG 速度 µm/s'],
+  ['D2001', '制御モード 6060h'], ['D2002', 'ポイントテーブル指定'], ['D2003', 'オーバーライド %'], ['D2004', 'JOG 速度 µm/s'],
   ['D1000', 'ステータスワード 6041h'], ['D1000.0', 'スイッチオン可'], ['D1000.1', 'スイッチオン'], ['D1000.2', '運転有効（サーボ ON）'], ['D1000.3', '異常'],
   ['D1000.6', 'スイッチオン禁止'], ['D1000.7', '警告'], ['D1000.A', '到達'], ['D1000.C', '始動受付・原点復帰完了'], ['D1000.D', '原点復帰エラー'],
   ['D1001', '制御モード表示 6061h'], ['D1002', '完了ポイントテーブル No.'], ['D1004', '位置実際値 6064h'], ['D1006', '速度実際値 606Ch'], ['D1008', 'アラーム番号'],
@@ -1721,7 +1802,7 @@ function buildLadder() {
         inner += `<text x="${outX + 8}" y="${yy + 25}" class="val" id="${vEl}"></text>`;
         if (odev) inner += cmtSvg(odev.raw, outX + 8, yy + 37, railR - outX - 16, 'start', 1);
         let fn = null;
-        if (o.kind === 'mov' || o.kind === 'bin' || o.kind === 'inc' || o.kind === 'arith' || o.kind === 'rstw') { const d = o.args[o.args.length - 1]; fn = () => `${d.raw}=${rdWord(d)}`; }
+        if (o.kind === 'mov' || o.kind === 'bin' || o.kind === 'mul' || o.kind === 'inc' || o.kind === 'arith' || o.kind === 'rstw') { const d = o.args[o.args.length - 1]; fn = () => `${d.raw}=${rdWord(d)}`; }
         ladRefs.push({ g: g.id, out: o, val: fn ? vEl : null, fn });
       }
       parts.push(g.open + inner + '</g>');
@@ -2175,7 +2256,7 @@ function loop(now) {
   frame++;
   drawMach(); updPanel();
   if (frame % 2 === 0) { updLadder(); drawTrace(); drawTC(); }
-  if (frame % 6 === 0) { updDevMon(); updBlock(); }
+  if (frame % 6 === 0) { updDevMon(); updBlock(); $('rswPct').textContent = `サーボ受信 RWw3: ${drv.ovr} %`; }
   requestAnimationFrame(loop);
 }
 
@@ -2192,9 +2273,13 @@ src.value = SAMPLES.s1; updGutter(); writeProgram();
 if (saved && saved !== SAMPLES.s1) { src.value = saved; updGutter(); setState(); showMsgs(parseProgram(saved)); }
 // 前回の No. 指定方式とデジタルスイッチの値を戻す（ラダーは上で戻した内容のまま）
 try { const s = localStorage.getItem('j5g-dsw'), v = +s; if (s != null && v >= 0 && v <= 9) dswVal = v; } catch (e) {}
-{ let m = null; try { m = localStorage.getItem('j5g-ptsel'); } catch (e) {} setPtMode(m === 'sel' ? 'sel' : 'lad', false); }
-// セレクタ方式で前回のラダーがサンプル 4 なら、書込み済みにする
-if (ptMode === 'sel' && src.value === SAMPLES.s4) { $('sample').value = 's4'; writeProgram(); }
+try { const s = localStorage.getItem('j5g-rsw'), v = +s; if (s != null && v >= 0 && v <= 15) rswVal = v; } catch (e) {}
+{
+  let m = null, o = null; try { m = localStorage.getItem('j5g-ptsel'); o = localStorage.getItem('j5g-ovr'); } catch (e) {}
+  setModes(m === 'sel' ? 'sel' : 'lad', o === '1', false);
+}
+// 前回のラダーが今の方式のサンプル（1 以外）なら、書込み済みにする
+{ const key = MODE_SAMPLE[ptMode + (ovrOn ? '+ovr' : '')]; if (key !== 's1' && src.value === SAMPLES[key]) { $('sample').value = key; writeProgram(); } }
 window.__j5 = { S, drv, mot, mach, panelIn, parseProgram, get prog() { return prog; }, scanOnce };
 requestAnimationFrame(loop);
 })();
