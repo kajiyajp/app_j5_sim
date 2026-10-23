@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>J5 サーボ制御シミュレータ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+JP:wght@400;500;600&family=Share+Tech+Mono&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
+<style>
+/* 単体で開くときの基本設定（Artifact では公開時に付く分） */
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; font-size: 14px; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<style>
+/* Layout: 左に操作盤（パラメータ）、右に制御ブロック図・波形・アンプ表示部。900px 未満は 1 列 */
+:root {
+  --bg: #ECEFF1;
+  --panel: #F9FAFB;
+  --ink: #1A2127;
+  --muted: #5B6670;
+  --line: #CAD1D7;
+  --grid: #E1E5E9;
+  --cmd: #1D5E9C;
+  --fb: #C55C14;
+  --load: #6B4FA0;
+  --ok: #2B7A4B;
+  --warn: #A86F12;
+  --crit: #B3261E;
+  --chip: #E2E7EB;
+  --led-bg: #1B1714;
+  --led: #FF6A3D;
+  --led-dim: #4A2A1E;
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  --font-led: "Share Tech Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161A; --panel: #182026; --ink: #E2E7EB; --muted: #94A1AC; --line: #2D3943; --grid: #222C34;
+    --cmd: #63A9EA; --fb: #F2944D; --load: #AC8FE3; --ok: #5DC18B; --warn: #E2B252; --crit: #F2746B; --chip: #24303A;
+    --led-bg: #0D0B0A; --led: #FF6A3D; --led-dim: #3A2219;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161A; --panel: #182026; --ink: #E2E7EB; --muted: #94A1AC; --line: #2D3943; --grid: #222C34;
+  --cmd: #63A9EA; --fb: #F2944D; --load: #AC8FE3; --ok: #5DC18B; --warn: #E2B252; --crit: #F2746B; --chip: #24303A;
+  --led-bg: #0D0B0A; --led: #FF6A3D; --led-dim: #3A2219;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { border-bottom: 1px solid var(--line); }
+header.top .wrap { padding-block: 18px 14px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; }
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 15px; margin: 0; }
+h3 { font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--muted); margin: 0; }
+
+.app { display: grid; grid-template-columns: minmax(300px, 370px) minmax(0, 1fr); gap: 18px; padding-block: 18px 40px; align-items: start; }
+@media (max-width: 900px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+/* 操作盤 */
+.ctl { display: flex; flex-direction: column; gap: 12px; }
+.group { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) 96px 46px; gap: 8px; align-items: center; }
+.row label { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.row .u { color: var(--muted); font-size: 12px; }
+.pno { font-family: var(--font-data); font-size: 11px; background: var(--chip); color: var(--muted); padding: 0 5px; border-radius: 3px; }
+input[type=number], select { width: 100%; font: 13px var(--font-data); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-variant-numeric: tabular-nums; }
+input[type=number]:disabled { color: var(--muted); background: transparent; border-style: dashed; }
+select { font-family: var(--font-body); }
+.row.wide { grid-template-columns: minmax(0, 1fr) 150px; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--cmd); outline-offset: 1px; }
+.check { display: flex; gap: 8px; align-items: center; }
+input[type=range] { width: 100%; accent-color: var(--cmd); }
+.level { display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 8px; align-items: center; }
+.level output { font: 600 15px var(--font-data); text-align: right; }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
+
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 6px 4px; cursor: pointer; border-left: 1px solid var(--line); font-weight: 500; }
+.seg label:first-of-type { border-left: 0; }
+.seg input:checked + label { background: var(--ink); color: var(--panel); }
+.seg input:focus-visible + label { outline: 2px solid var(--cmd); outline-offset: -2px; }
+
+.scen { display: flex; flex-wrap: wrap; gap: 6px; }
+button { font: 500 13px var(--font-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+/* 右側 */
+.view { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; min-width: 0; }
+.card-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.diagram { overflow-x: auto; }
+.diagram svg { display: block; min-width: 760px; width: 100%; height: auto; }
+.bd-box { fill: var(--bg); stroke: var(--line); }
+.bd-t { fill: var(--ink); font: 600 12px var(--font-body); }
+.bd-v { fill: var(--muted); font: 11px var(--font-data); }
+.bd-l { stroke: var(--muted); fill: none; stroke-width: 1.3; }
+.bd-a { fill: var(--muted); }
+.bd-sum { fill: var(--bg); stroke: var(--muted); }
+.bd-in { fill: var(--cmd); font: 600 12px var(--font-body); }
+.bd-inl { stroke: var(--cmd); stroke-width: 1.6; fill: none; }
+.bd-ina { fill: var(--cmd); }
+.off { opacity: .28; }
+
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.metric { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.metric .k { font-size: 12px; color: var(--muted); }
+.metric .v { font: 500 20px var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric .v small { font-size: 12px; color: var(--muted); margin-left: 3px; }
+.pill { display: inline-block; font: 600 12px var(--font-body); padding: 1px 9px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.crit { color: var(--crit); }
+
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tools select { width: auto; }
+.chartwrap { position: relative; width: 100%; }
+.chartwrap canvas { position: absolute; left: 0; top: 0; width: 100%; touch-action: pan-y; }
+
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 700px) { .lower { grid-template-columns: minmax(0, 1fr); } }
+#disk { width: 100%; max-width: 360px; height: auto; aspect-ratio: 2 / 1; display: block; margin: 0 auto; }
+
+/* サーボアンプ前面の表示部を模したモニタ（両テーマ共通の見た目） */
+.amp { background: var(--led-bg); border-radius: 6px; padding: 12px 14px; color: #CFC6BE; display: flex; flex-direction: column; gap: 10px; }
+.amp .lamps { display: flex; gap: 14px; font: 12px var(--font-data); }
+.lamp { display: flex; align-items: center; gap: 5px; color: #8E847C; }
+.lamp i { width: 9px; height: 9px; border-radius: 50%; background: var(--led-dim); display: inline-block; }
+.lamp.lit { color: #E9DED5; } .lamp.lit i { background: var(--led); box-shadow: 0 0 6px var(--led); }
+.lamp.lit.green i { background: #59D67E; box-shadow: 0 0 6px #59D67E; }
+.amp .seg7 { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; align-items: baseline; }
+.amp .seg7 span { font: 12px var(--font-body); color: #9C928A; }
+.amp .seg7 b { font: 400 26px var(--font-led); color: var(--led); text-align: right; letter-spacing: .06em; font-variant-numeric: tabular-nums; text-shadow: 0 0 8px rgba(255,106,61,.35); white-space: nowrap; overflow: hidden; }
+
+.notes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 700px) { .notes { grid-template-columns: minmax(0, 1fr); } }
+.notes ol, .notes ul { margin: 6px 0 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; max-width: 65ch; }
+.notes p { margin: 6px 0 0; max-width: 65ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>J5 サーボ制御シミュレータ</h1>
+    <p>MR-J5 系サーボアンプの位置・速度・トルク制御と調整パラメータが、モータの動きにどう効くかを確かめる学習用の簡易モデルです。数値は実機の値ではありません。</p>
+  </div>
+</header>
+
+<main class="app wrap">
+  <aside class="ctl">
+    <section class="group">
+      <h3>シナリオ</h3>
+      <div class="scen" id="scen">
+        <button type="button" data-s="base" class="on">基本</button>
+        <button type="button" data-s="ff">FF で溜りを減らす</button>
+        <button type="button" data-s="high">応答性の上げすぎ</button>
+        <button type="button" data-s="inertia">慣性比の設定ずれ</button>
+        <button type="button" data-s="reso">機械共振</button>
+        <button type="button" data-s="notch">共振＋ノッチ</button>
+        <button type="button" data-s="dist">速度制御と外乱</button>
+        <button type="button" data-s="torque">トルク制御</button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h3>運転モード <span class="pno">PA01</span></h3>
+      <div class="seg" role="radiogroup" aria-label="運転モード">
+        <input type="radio" name="mode" id="m-pos" value="pos" checked><label for="m-pos">位置</label>
+        <input type="radio" name="mode" id="m-spd" value="spd"><label for="m-spd">速度</label>
+        <input type="radio" name="mode" id="m-trq" value="trq"><label for="m-trq">トルク</label>
+      </div>
+    </section>
+
+    <section class="group" id="g-pos">
+      <h3>位置指令（台形）</h3>
+      <div class="row"><label for="pDist">移動量</label><input type="number" id="pDist" value="5" step="0.5"><span class="u">rev</span></div>
+      <div class="row"><label for="pSpeed">最高速度</label><input type="number" id="pSpeed" value="3000" step="100" min="1"><span class="u">r/min</span></div>
+      <div class="row"><label for="pAcc">加減速時間</label><input type="number" id="pAcc" value="50" step="5" min="1"><span class="u">ms</span></div>
+      <label class="check"><input type="checkbox" id="pRound"> 往復させる（停止 150 ms のあと戻る）</label>
+    </section>
+
+    <section class="group" id="g-spd" hidden>
+      <h3>速度指令</h3>
+      <div class="row"><label for="sSpeed">指令速度</label><input type="number" id="sSpeed" value="2000" step="100"><span class="u">r/min</span></div>
+      <div class="row"><label for="sAcc">加速時定数 <span class="pno">PC01</span></label><input type="number" id="sAcc" value="100" step="10" min="0"><span class="u">ms</span></div>
+      <div class="row"><label for="sDec">減速時定数 <span class="pno">PC02</span></label><input type="number" id="sDec" value="100" step="10" min="0"><span class="u">ms</span></div>
+      <div class="row"><label for="sHold">定速時間</label><input type="number" id="sHold" value="300" step="50" min="0"><span class="u">ms</span></div>
+      <p class="hint">時定数は 0 から定格 3000 r/min までの時間。</p>
+    </section>
+
+    <section class="group" id="g-trq" hidden>
+      <h3>トルク指令</h3>
+      <div class="row"><label for="tCmd">トルク指令</label><input type="number" id="tCmd" value="50" step="10"><span class="u">%</span></div>
+      <div class="row"><label for="tSpdLim">速度制限</label><input type="number" id="tSpdLim" value="1500" step="100" min="1"><span class="u">r/min</span></div>
+      <div class="row"><label for="tDur">指令時間</label><input type="number" id="tDur" value="250" step="50" min="1"><span class="u">ms</span></div>
+    </section>
+
+    <section class="group">
+      <h3>ゲイン調整</h3>
+      <div class="row wide"><label for="tune">チューニング <span class="pno">PA08</span></label>
+        <select id="tune"><option value="auto">オート（応答性で決める）</option><option value="manual">マニュアル</option></select></div>
+      <div id="levelBox">
+        <label for="level">オートチューニング応答性 <span class="pno">PA09</span></label>
+        <div class="level"><input type="range" id="level" min="1" max="40" value="16"><output id="levelOut">16</output></div>
+      </div>
+      <div class="row"><label for="gd2">負荷慣性比 <span class="pno">PB06</span></label><input type="number" id="gd2" value="5" step="0.5" min="0"><span class="u">倍</span></div>
+      <div class="row"><label for="pg1">モデル制御ゲイン <span class="pno">PB07</span></label><input type="number" id="pg1" value="60" step="1" min="0"><span class="u">rad/s</span></div>
+      <div class="row"><label for="pg2">位置制御ゲイン <span class="pno">PB08</span></label><input type="number" id="pg2" value="85" step="1" min="1"><span class="u">rad/s</span></div>
+      <div class="row"><label for="vg2">速度制御ゲイン <span class="pno">PB09</span></label><input type="number" id="vg2" value="510" step="10" min="1"><span class="u">rad/s</span></div>
+      <div class="row"><label for="vic">速度積分補償 <span class="pno">PB10</span></label><input type="number" id="vic" value="39" step="1" min="0.1"><span class="u">ms</span></div>
+      <div class="row"><label for="ff">速度フィードフォワード <span class="pno">PB04</span></label><input type="number" id="ff" value="0" step="10" min="0" max="100"><span class="u">%</span></div>
+      <p class="hint" id="tuneHint">オートでは慣性比を推定し、応答性からゲインを決めます（灰色の欄）。</p>
+    </section>
+
+    <section class="group">
+      <h3>フィルタ</h3>
+      <div class="row"><label for="lpf">トルク指令ローパス <span class="pno">PB18</span></label><input type="number" id="lpf" value="490" step="50" min="0"><span class="u">Hz</span></div>
+      <label class="check"><input type="checkbox" id="notchOn"> 機械共振抑制フィルタ 1 を使う</label>
+      <div class="row"><label for="notchF">ノッチ周波数 <span class="pno">PB13</span></label><input type="number" id="notchF" value="400" step="10" min="10"><span class="u">Hz</span></div>
+      <div class="row wide"><label for="notchD">深さ・幅 <span class="pno">PB14</span></label>
+        <select id="notchD"><option value="-40,0.35">深い・標準</option><option value="-40,0.7">深い・広い</option><option value="-14,0.35">中・標準</option><option value="-8,0.35">浅い・標準</option></select></div>
+      <p class="hint">ローパスの 0 は無効。オートでは応答性に合わせて決まります。</p>
+    </section>
+
+    <section class="group">
+      <h3>制限・判定</h3>
+      <div class="row"><label for="tlim">トルク制限 <span class="pno">PA11/12</span></label><input type="number" id="tlim" value="300" step="10" min="0" max="300"><span class="u">%</span></div>
+      <div class="row"><label for="inpos">インポジション範囲 <span class="pno">PA10</span></label><input type="number" id="inpos" value="10" step="1" min="1"><span class="u">pulse</span></div>
+      <div class="row"><label for="ppr">1回転の指令パルス <span class="pno">PA05</span></label><input type="number" id="ppr" value="10000" step="1000" min="100"><span class="u">pulse</span></div>
+      <p class="hint">エンコーダは 26 bit（67,108,864 pulse/rev）。溜りパルスは指令パルス単位で表示。</p>
+    </section>
+
+    <section class="group">
+      <h3>モータ・機械</h3>
+      <div class="row wide"><label for="motor">モータ容量</label>
+        <select id="motor"><option value="100">100 W クラス</option><option value="200">200 W クラス</option><option value="400" selected>400 W クラス</option><option value="750">750 W クラス</option></select></div>
+      <div class="row"><label for="ratio">実際の負荷慣性比</label><input type="number" id="ratio" value="5" step="0.5" min="0"><span class="u">倍</span></div>
+      <div class="row"><label for="fric">クーロン摩擦</label><input type="number" id="fric" value="5" step="1" min="0"><span class="u">%</span></div>
+      <div class="row"><label for="dist">外乱トルク</label><input type="number" id="dist" value="0" step="10"><span class="u">%</span></div>
+      <div class="row"><label for="distT">外乱を加える時刻</label><input type="number" id="distT" value="250" step="10" min="0"><span class="u">ms</span></div>
+      <label class="check"><input type="checkbox" id="reso"> ばね結合（機械共振あり）</label>
+      <div class="row"><label for="resoF">共振周波数</label><input type="number" id="resoF" value="400" step="10" min="20"><span class="u">Hz</span></div>
+      <p class="hint" id="motorHint"></p>
+    </section>
+  </aside>
+
+  <section class="view">
+    <div class="card">
+      <div class="card-h"><h2>制御ブロック</h2><span class="hint" id="bdHint"></span></div>
+      <div class="diagram">
+        <svg viewBox="0 0 880 160" role="img" aria-label="位置ループ・速度ループ・トルクのカスケード制御のブロック図">
+          <defs>
+            <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="bd-a"/></marker>
+            <marker id="arc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="bd-ina"/></marker>
+          </defs>
+          <g id="bd-posgrp">
+            <text x="6" y="66" class="bd-in">位置指令</text>
+            <path d="M8 76 H60" class="bd-inl" marker-end="url(#arc)"/>
+            <rect x="62" y="54" width="80" height="44" rx="4" class="bd-box"/>
+            <text x="102" y="72" text-anchor="middle" class="bd-t">モデル</text>
+            <text x="102" y="89" text-anchor="middle" class="bd-v" id="bd-pg1">PG1 60</text>
+            <path d="M142 76 H149" class="bd-l" marker-end="url(#ar)"/>
+            <circle cx="158" cy="76" r="9" class="bd-sum"/><text x="158" y="80" text-anchor="middle" class="bd-v">Σ</text>
+            <path d="M146 76 V24 H290 V65" class="bd-l" marker-end="url(#ar)"/>
+            <text x="200" y="18" class="bd-v" id="bd-ff">速度FF 0%</text>
+            <path d="M167 76 H180" class="bd-l" marker-end="url(#ar)"/>
+            <rect x="182" y="54" width="84" height="44" rx="4" class="bd-box"/>
+            <text x="224" y="72" text-anchor="middle" class="bd-t">位置制御</text>
+            <text x="224" y="89" text-anchor="middle" class="bd-v" id="bd-pg2">PG2 85</text>
+            <path d="M266 76 H279" class="bd-l" marker-end="url(#ar)"/>
+            <path d="M850 76 V136 H158 V87" class="bd-l" marker-end="url(#ar)"/>
+            <text x="470" y="152" text-anchor="middle" class="bd-v">位置フィードバック（エンコーダ 26 bit）</text>
+          </g>
+          <g id="bd-spdgrp">
+            <circle cx="290" cy="76" r="9" class="bd-sum"/><text x="290" y="80" text-anchor="middle" class="bd-v">Σ</text>
+            <path d="M299 76 H310" class="bd-l" marker-end="url(#ar)"/>
+            <rect x="312" y="54" width="104" height="44" rx="4" class="bd-box"/>
+            <text x="364" y="72" text-anchor="middle" class="bd-t">速度制御 PI</text>
+            <text x="364" y="89" text-anchor="middle" class="bd-v" id="bd-vg">VG2 510 / 39ms</text>
+            <path d="M842 76 V116 H290 V87" class="bd-l" marker-end="url(#ar)"/>
+            <text x="560" y="111" text-anchor="middle" class="bd-v">速度フィードバック</text>
+          </g>
+          <g id="bd-spdin" hidden>
+            <text x="232" y="30" class="bd-in">速度指令</text>
+            <path d="M260 38 V52 H272 V64" class="bd-inl" marker-end="url(#arc)"/>
+          </g>
+          <path d="M416 76 H430" class="bd-l" marker-end="url(#ar)" id="bd-spdout"/>
+          <g id="bd-trqin" hidden>
+            <text x="404" y="30" class="bd-in">トルク指令</text>
+            <path d="M432 38 V64" class="bd-inl" marker-end="url(#arc)"/>
+          </g>
+          <rect x="432" y="54" width="94" height="44" rx="4" class="bd-box"/>
+          <text x="479" y="72" text-anchor="middle" class="bd-t">フィルタ</text>
+          <text x="479" y="89" text-anchor="middle" class="bd-v" id="bd-flt">LPF 490Hz</text>
+          <path d="M526 76 H540" class="bd-l" marker-end="url(#ar)"/>
+          <rect x="542" y="54" width="82" height="44" rx="4" class="bd-box"/>
+          <text x="583" y="72" text-anchor="middle" class="bd-t">トルク制限</text>
+          <text x="583" y="89" text-anchor="middle" class="bd-v" id="bd-lim">±300%</text>
+          <path d="M624 76 H640" class="bd-l" marker-end="url(#ar)"/>
+          <rect x="642" y="54" width="76" height="44" rx="4" class="bd-box"/>
+          <text x="680" y="72" text-anchor="middle" class="bd-t">電流制御</text>
+          <text x="680" y="89" text-anchor="middle" class="bd-v">τ 0.1ms</text>
+          <path d="M718 76 H734" class="bd-l" marker-end="url(#ar)"/>
+          <rect x="736" y="54" width="98" height="44" rx="4" class="bd-box"/>
+          <text x="785" y="72" text-anchor="middle" class="bd-t">モータ＋負荷</text>
+          <text x="785" y="89" text-anchor="middle" class="bd-v" id="bd-mot">慣性比 5</text>
+          <path d="M834 76 H850" class="bd-l"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="metrics" id="metrics"></div>
+
+    <div class="card">
+      <div class="card-h">
+        <h2>波形</h2>
+        <div class="tools">
+          <button type="button" id="play">▶ 再生</button>
+          <select id="pace" aria-label="再生速度"><option value="auto">自動（約 6 秒）</option><option value="10">1/10 倍速</option><option value="50">1/50 倍速</option><option value="200">1/200 倍速</option></select>
+          <label class="check" id="zoomBox"><input type="checkbox" id="zoom"> 溜りをインポジ付近に拡大</label>
+        </div>
+      </div>
+      <div class="chartwrap" id="chartwrap">
+        <canvas id="cBase"></canvas>
+        <canvas id="cOver" aria-label="波形。ポインタを重ねるとその時刻の値を表示"></canvas>
+      </div>
+    </div>
+
+    <div class="lower">
+      <div class="card">
+        <div class="card-h"><h2>軸の動き</h2><span class="hint">青の三角が指令位置、線が実位置</span></div>
+        <canvas id="disk" width="360" height="180"></canvas>
+      </div>
+      <div class="amp" aria-live="off">
+        <div class="lamps">
+          <span class="lamp lit green" id="l-son"><i></i>SON</span>
+          <span class="lamp" id="l-inp"><i></i>INP</span>
+          <span class="lamp" id="l-tlc"><i></i>TLC</span>
+          <span class="lamp" id="l-alm"><i></i>ALM</span>
+        </div>
+        <div class="seg7">
+          <span>時刻 ms</span><b id="d-t">0.0</b>
+          <span>速度 r/min</span><b id="d-v">0</b>
+          <span id="d-ek">溜りパルス</span><b id="d-e">0</b>
+          <span>トルク %</span><b id="d-q">0</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="card">
+        <h2>調整の進め方</h2>
+        <ol>
+          <li>運転モードを決める。位置決めは位置、搬送のように速さを保つなら速度、張力や押し付けはトルク。</li>
+          <li>オートチューニングで動かし、負荷慣性比を推定させる。</li>
+          <li>応答性を 1 段ずつ上げ、整定時間と音・振動を見る。発振したら 2〜3 段戻す。</li>
+          <li>決まった周波数で振動するなら、その周波数に機械共振抑制フィルタを合わせる。</li>
+          <li>溜りを減らしたいときは速度フィードフォワードを足す。上げすぎるとオーバーシュートする。</li>
+          <li>最後にインポジション範囲とトルク制限を用途に合わせる。</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>このモデルの前提</h2>
+        <ul>
+          <li>位置ループ（P）→ 速度ループ（PI）→ トルクフィルタ → トルク制限 → 電流制御（一次遅れ）の直列構成。制御周期は 50 µs、検出遅れ 200 µs。</li>
+          <li>速度ゲインは慣性で正規化しています（トルク指令 = 推定慣性 × VG2 × 速度偏差）。慣性比の設定がずれると、実際の応答が変わります。</li>
+          <li>オートの応答性からゲインへの換算は、このシミュレータ独自の目安です。</li>
+          <li>アラームは過速度（AL.31 相当）と誤差過大 3 回転（AL.52 相当）だけを見ています。</li>
+          <li>パラメータ番号は MR-J5 系の名称を手がかりにした目安です。実機の設定は取扱説明書で確かめてください。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : 0; };
+const TWO_PI = 2 * Math.PI;
+const ENC = 67108864;
+
+// モータ容量ごとの代表値（目安）。Jm: kg·m², Tr/Tmax: N·m
+const MOTORS = {
+  '100': { Jm: 0.088e-4, Tr: 0.32, Tmax: 0.95, Nr: 3000, Nmax: 6000 },
+  '200': { Jm: 0.22e-4,  Tr: 0.64, Tmax: 1.9,  Nr: 3000, Nmax: 6000 },
+  '400': { Jm: 0.37e-4,  Tr: 1.3,  Tmax: 3.8,  Nr: 3000, Nmax: 6000 },
+  '750': { Jm: 1.26e-4,  Tr: 2.4,  Tmax: 7.2,  Nr: 3000, Nmax: 6000 },
+};
+
+// ---------- パラメータ ----------
+function readParams() {
+  const [nd, nz] = $('notchD').value.split(',').map(Number);
+  return {
+    mode: document.querySelector('input[name=mode]:checked').value,
+    motor: $('motor').value, ratio: Math.max(0, num('ratio')), fric: Math.max(0, num('fric')),
+    dist: num('dist'), distT: num('distT'), reso: $('reso').checked, resoF: Math.max(20, num('resoF')),
+    pDist: num('pDist'), pSpeed: Math.max(1, num('pSpeed')), pAcc: Math.max(1, num('pAcc')), pRound: $('pRound').checked,
+    sSpeed: num('sSpeed'), sAcc: Math.max(0, num('sAcc')), sDec: Math.max(0, num('sDec')), sHold: Math.max(0, num('sHold')),
+    tCmd: num('tCmd'), tSpdLim: Math.max(1, num('tSpdLim')), tDur: Math.max(1, num('tDur')),
+    tune: $('tune').value, level: num('level'),
+    gd2: Math.max(0, num('gd2')), pg1: Math.max(0, num('pg1')), pg2: Math.max(0.1, num('pg2')),
+    vg2: Math.max(1, num('vg2')), vic: Math.max(0.1, num('vic')), ff: Math.min(100, Math.max(0, num('ff'))) / 100,
+    lpf: Math.max(0, num('lpf')), notchOn: $('notchOn').checked, notchF: Math.max(10, num('notchF')), notchDepth: nd, notchZeta: nz,
+    tlim: Math.min(300, Math.max(0, num('tlim'))), inpos: Math.max(1, num('inpos')), ppr: Math.max(100, num('ppr')),
+  };
+}
+
+// 応答性 → ゲイン（このシミュレータ独自の換算）
+function autoGains(level) {
+  const fs = 10 * Math.pow(1.15, level - 1);   // 速度ループの目標帯域 Hz
+  const vg2 = TWO_PI * fs;
+  return { vg2, pg2: vg2 / 6, pg1: vg2 / 4, vic: 10000 / vg2, lpf: Math.min(4500, fs * 6) };
+}
+
+function gainsFor(p) {
+  if (p.tune === 'auto') {
+    const a = autoGains(p.level);
+    return { ...a, gd2: p.ratio, ff: p.ff };
+  }
+  return { vg2: p.vg2, pg2: p.pg2, pg1: p.pg1, vic: p.vic, lpf: p.lpf, gd2: p.gd2, ff: p.ff };
+}
+
+function syncAutoFields() {
+  const auto = $('tune').value === 'auto';
+  $('levelBox').hidden = !auto;
+  ['gd2', 'pg1', 'pg2', 'vg2', 'vic', 'lpf'].forEach(id => $(id).disabled = auto);
+  $('levelOut').textContent = $('level').value;
+  $('tuneHint').textContent = auto
+    ? 'オートでは慣性比を推定し、応答性からゲインを決めます（点線の欄）。'
+    : 'マニュアル: 各ゲインを直接設定します。慣性比も手入力です。';
+  if (auto) {
+    const a = autoGains(num('level'));
+    $('gd2').value = num('ratio');
+    $('pg1').value = a.pg1.toFixed(0); $('pg2').value = a.pg2.toFixed(0);
+    $('vg2').value = a.vg2.toFixed(0); $('vic').value = a.vic.toFixed(1); $('lpf').value = a.lpf.toFixed(0);
+  }
+}
+
+// ---------- 指令 ----------
+function trap(t, D, vmax, ta) {
+  const s = Math.sign(D) || 1, d = Math.abs(D), a = vmax / ta;
+  let t1, tc, vp;
+  if (d <= vmax * ta) { t1 = Math.sqrt(d / a); vp = a * t1; tc = 0; }
+  else { t1 = ta; vp = vmax; tc = d / vmax - ta; }
+  const T = 2 * t1 + tc;
+  if (t <= 0) return [0, 0, T];
+  if (t < t1) return [s * 0.5 * a * t * t, s * a * t, T];
+  if (t < t1 + tc) return [s * (0.5 * a * t1 * t1 + vp * (t - t1)), s * vp, T];
+  if (t < T) { const u = T - t; return [s * (d - 0.5 * a * u * u), s * a * u, T]; }
+  return [s * d, 0, T];
+}
+
+function buildProfile(p, m) {
+  const t0 = 0.01;
+  if (p.mode === 'pos') {
+    const D = p.pDist * TWO_PI, v = p.pSpeed / 60 * TWO_PI, ta = p.pAcc / 1000;
+    const T1 = trap(1e9, D, v, ta)[2];
+    const moves = [{ t0, D, end: t0 + T1 }];
+    if (p.pRound) { const t2 = t0 + T1 + 0.15; moves.push({ t0: t2, D: -D, end: t2 + T1 }); }
+    const tEnd = Math.min(3, moves[moves.length - 1].end + 0.3);
+    return {
+      moves, tEnd,
+      at(t) { let x = 0, vv = 0; for (const mv of moves) { const r = trap(t - mv.t0, mv.D, v, ta); x += r[0]; vv += r[1]; } return [x, vv]; },
+    };
+  }
+  if (p.mode === 'spd') {
+    const vt = p.sSpeed / 60 * TWO_PI, vr = m.Nr / 60 * TWO_PI;
+    const tu = p.sAcc / 1000 * Math.abs(vt) / vr, td = p.sDec / 1000 * Math.abs(vt) / vr, th = p.sHold / 1000;
+    const tEnd = Math.min(3, t0 + tu + th + td + 0.2);
+    return {
+      tEnd, vt, tHoldStart: t0 + tu, tHoldEnd: t0 + tu + th,
+      at(t) {
+        const u = t - t0;
+        if (u <= 0) return 0;
+        if (u < tu) return vt * u / tu;
+        if (u < tu + th) return vt;
+        if (u < tu + th + td) return vt * (1 - (u - tu - th) / td);
+        return 0;
+      },
+    };
+  }
+  const dur = p.tDur / 1000;
+  return { tEnd: Math.min(3, t0 + dur + 0.25), at: t => (t >= t0 && t < t0 + dur) ? p.tCmd / 100 : 0 };
+}
+
+// 双一次変換のノッチ（深さ dB、幅 ζ）
+function notchCoef(f, depthDb, zp, dt) {
+  const K = 2 / dt, wn = K * Math.tan(Math.PI * f * dt), zz = zp * Math.pow(10, depthDb / 20);
+  const K2 = K * K, w2 = wn * wn;
+  const a0 = K2 + 2 * zp * wn * K + w2;
+  return {
+    b0: (K2 + 2 * zz * wn * K + w2) / a0, b1: 2 * (w2 - K2) / a0, b2: (K2 - 2 * zz * wn * K + w2) / a0,
+    a1: 2 * (w2 - K2) / a0, a2: (K2 - 2 * zp * wn * K + w2) / a0,
+  };
+}
+
+// ---------- シミュレーション本体 ----------
+function simulate(p, g) {
+  const m = MOTORS[p.motor];
+  const dt = 50e-6, TAU_I = 0.1e-3, DELAY = 4;
+  const Jm = m.Jm, JL = Jm * p.ratio, Jt = Jm + JL, Tr = m.Tr;
+  const Tmax = Math.min(p.tlim / 100 * Tr, m.Tmax);
+  const Jest = Jm * (1 + g.gd2);
+  const prof = buildProfile(p, m);
+  const N = Math.min(60000, Math.ceil(prof.tEnd / dt));
+  const F = () => new Float32Array(N);
+  const o = { dt, N, tEnd: N * dt, mode: p.mode, prof, p, g, m, Tmax,
+    cmdSpd: F(), spd: F(), spdL: F(), trq: F(), trqCmd: F(), err: F(), pos: F(), posCmd: F(), posL: F(), alarm: null };
+
+  const aL = g.lpf > 0 ? 1 - Math.exp(-TWO_PI * g.lpf * dt) : 1;
+  const nb = p.notchOn ? notchCoef(p.notchF, p.notchDepth, p.notchZeta, dt) : null;
+  let nx1 = 0, nx2 = 0, ny1 = 0, ny2 = 0;
+  const reso = p.reso && p.ratio > 0;
+  let K = 0, C = 0;
+  if (reso) { const wa = TWO_PI * p.resoF / Math.sqrt(1 + p.ratio); K = JL * wa * wa; C = 2 * 0.03 * Math.sqrt(K * JL); }
+  const Tc = p.fric / 100 * Tr, Td0 = p.dist / 100 * Tr, tD = p.distT / 1000;
+  const toRpm = 60 / TWO_PI, toPls = p.ppr / TWO_PI;
+  const wOver = m.Nmax * 1.15 / toRpm, errMax = 3 * TWO_PI;
+  const kI = 1 / (g.vic / 1000), aI = 1 - Math.exp(-dt / TAU_I);
+  const bufTh = new Float64Array(DELAY + 1), bufW = new Float64Array(DELAY + 1);
+  let thm = 0, wm = 0, thl = 0, wl = 0, T = 0, Tf = 0, xm = 0, integ = 0, on = true;
+
+  for (let i = 0; i < N; i++) {
+    const t = i * dt;
+    // 検出遅れ
+    const k = i % (DELAY + 1);
+    const thD = bufTh[k], wD = bufW[k];
+    bufTh[k] = thm; bufW[k] = wm;
+
+    let xc = 0, vc = 0, vref = 0, Tcmd = 0;
+    if (p.mode === 'pos') {
+      const c = prof.at(t); xc = c[0]; vc = c[1];
+      // 規範モデル（PG1）の応答に実機を追従させる。速度 FF は規範モデルの遅れを減らす
+      let vm;
+      if (g.pg1 > 0) { vm = g.pg1 * (xc - xm) + g.ff * vc; xm += vm * dt; } else { xm = xc; vm = vc; }
+      vref = g.pg2 * (xm - thD) + vm;
+    } else if (p.mode === 'spd') { vref = prof.at(t); vc = vref; }
+
+    if (p.mode !== 'trq') {
+      const e = vref - wD;
+      integ += e * dt;
+      Tcmd = Jest * g.vg2 * (e + integ * kI);
+      if ((Tcmd > Tmax && e > 0) || (Tcmd < -Tmax && e < 0)) integ -= e * dt;   // 積分の飽和防止
+    } else {
+      const tc = prof.at(t) * Tr, vl = p.tSpdLim / toRpm;
+      const up = Jest * g.vg2 * (vl - wD), lo = Jest * g.vg2 * (-vl - wD);
+      Tcmd = Math.min(Math.max(tc, lo), up);
+      vc = tc / Tr * 100;
+    }
+
+    Tf += (Tcmd - Tf) * aL;
+    let y = Tf;
+    if (nb) { y = nb.b0 * Tf + nb.b1 * nx1 + nb.b2 * nx2 - nb.a1 * ny1 - nb.a2 * ny2; nx2 = nx1; nx1 = Tf; ny2 = ny1; ny1 = y; }
+    const Tl = on ? Math.max(-Tmax, Math.min(Tmax, y)) : 0;
+    T = on ? T + (Tl - T) * aI : 0;
+
+    const Td = (Td0 !== 0 && t >= tD) ? Td0 : 0;
+    if (reso) {
+      const Fk = K * (thm - thl) + C * (wm - wl);
+      wm += (T - Fk) / Jm * dt;
+      wl += (Fk - Tc * Math.tanh(wl / 2) - Td) / JL * dt;
+      thm += wm * dt; thl += wl * dt;
+    } else {
+      wm += (T - Tc * Math.tanh(wm / 2) - Td) / Jt * dt;
+      thm += wm * dt; wl = wm; thl = thm;
+    }
+
+    if (on) {
+      if (!isFinite(wm) || Math.abs(wm) > wOver) { on = false; o.alarm = { t, code: 'AL.31 相当', msg: '過速度' }; }
+      else if (p.mode === 'pos' && Math.abs(xc - thm) > errMax) { on = false; o.alarm = { t, code: 'AL.52 相当', msg: '誤差過大' }; }
+    }
+    if (!isFinite(wm)) { wm = 0; wl = 0; }
+
+    o.cmdSpd[i] = p.mode === 'trq' ? 0 : vc * toRpm;
+    o.spd[i] = wm * toRpm; o.spdL[i] = wl * toRpm;
+    o.trq[i] = T / Tr * 100; o.trqCmd[i] = p.mode === 'trq' ? vc : Math.max(-1000, Math.min(1000, Tcmd / Tr * 100));
+    o.err[i] = p.mode === 'pos' ? (xc - thm) * toPls : (vref - wm) * toRpm;
+    o.pos[i] = thm / TWO_PI; o.posCmd[i] = xc / TWO_PI; o.posL[i] = thl / TWO_PI;
+  }
+  o.metrics = computeMetrics(o);
+  return o;
+}
+
+function computeMetrics(o) {
+  const { p, dt, N } = o;
+  const idx = t => Math.max(0, Math.min(N - 1, Math.round(t / dt)));
+  let pk = 0, rms = 0, sat = 0;
+  for (let i = 0; i < N; i++) { const q = Math.abs(o.trq[i]); if (q > pk) pk = q; rms += q * q; if (q >= o.Tmax / o.m.Tr * 100 * 0.995) sat++; }
+  // 最後の 100 ms（停止中）のトルクの振れ幅。大きければ発振している
+  let tMin = Infinity, tMax = -Infinity;
+  for (let i = Math.max(0, N - Math.round(0.1 / dt)); i < N; i++) { tMin = Math.min(tMin, o.trq[i]); tMax = Math.max(tMax, o.trq[i]); }
+  const res = { peak: pk, rms: Math.sqrt(rms / N), sat: sat * dt, tailPP: p.mode === 'trq' ? null : tMax - tMin };
+  res.osc = res.tailPP != null && res.tailPP > 30;
+  if (res.osc) {   // 振動周波数（平均値を上向きに横切る回数から）
+    const a = Math.max(0, N - Math.round(0.1 / dt)); let mean = 0, prev = 0, c = 0;
+    for (let i = a; i < N; i++) mean += o.trq[i]; mean /= (N - a);
+    for (let i = a; i < N; i++) { const v = o.trq[i] - mean; if (prev < 0 && v >= 0) c++; prev = v; }
+    res.oscF = c / ((N - a) * dt);
+  }
+  if (p.mode === 'pos') {
+    const mv = o.prof.moves[0];
+    const wEnd = o.prof.moves[1] ? o.prof.moves[1].t0 : o.tEnd;
+    const i0 = idx(mv.end), i1 = idx(wEnd) - 1;
+    let lastBad = -1, maxE = 0, ov = 0;
+    const s = Math.sign(mv.D) || 1, target = mv.D / TWO_PI;
+    for (let i = 0; i < N; i++) { const e = Math.abs(o.err[i]); if (e > maxE) maxE = e; }
+    for (let i = i0; i <= i1; i++) {
+      if (Math.abs(o.err[i]) > p.inpos) lastBad = i;
+      const over = (o.pos[i] - target) * s * p.ppr;
+      if (over > ov) ov = over;
+    }
+    res.settle = lastBad < 0 ? 0 : (lastBad >= i1 ? null : (lastBad + 1 - i0) * dt);
+    res.settleAt = res.settle == null ? null : mv.end + res.settle;
+    res.maxErr = maxE; res.over = ov;
+  } else if (p.mode === 'spd') {
+    const vt = o.prof.vt * 60 / TWO_PI, s = Math.sign(vt) || 1;
+    const iA = idx(o.prof.tHoldStart), iB = idx(o.prof.tHoldEnd);
+    let ov = 0, dip = 0, reach = null;
+    for (let i = 0; i < N; i++) { if (reach == null && Math.abs(o.spd[i]) >= Math.abs(vt) * 0.9) reach = i * dt - 0.01; }
+    for (let i = iA; i <= iB; i++) { const d = (o.spd[i] - vt) * s; if (d > ov) ov = d; }
+    if (p.dist !== 0) { const iD = idx(p.distT / 1000); for (let i = iD; i < Math.min(N, iD + idx(0.15)); i++) { const d = Math.abs(o.spd[i] - o.cmdSpd[i]); if (d > dip) dip = d; } }
+    res.over = ov; res.dip = p.dist !== 0 ? dip : null; res.reach = reach;
+  } else {
+    let vmax = 0; for (let i = 0; i < N; i++) vmax = Math.max(vmax, Math.abs(o.spd[i]));
+    res.vmax = vmax; res.limited = vmax >= p.tSpdLim * 0.98;
+  }
+  return res;
+}
+
+// ---------- 表示 ----------
+let sim = null, cursor = 0, playing = false, rafId = 0;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (v, d = 0) => (v == null || !isFinite(v)) ? '—' : v.toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+function renderMetrics(o) {
+  const r = o.metrics, cards = [];
+  const status = o.alarm
+    ? `<span class="pill crit">${o.alarm.code} ${o.alarm.msg}</span>`
+    : r.osc ? '<span class="pill crit">発振（停止中もトルクが振れる）</span>'
+    : (o.p.mode === 'pos' && r.settle == null) ? '<span class="pill warn">未整定・振動</span>'
+    : r.sat > 0.002 ? '<span class="pill warn">トルク制限に到達</span>' : '<span class="pill ok">正常</span>';
+  cards.push(['状態', status]);
+  if (o.p.mode === 'pos') {
+    cards.push(['整定時間（指令完了から）', r.settle == null ? '—' : `${fmt(r.settle * 1000, 1)}<small>ms</small>`]);
+    cards.push(['オーバーシュート', `${fmt(r.over)}<small>pulse</small>`]);
+    cards.push(['最大溜りパルス', `${fmt(r.maxErr)}<small>pulse</small>`]);
+  } else if (o.p.mode === 'spd') {
+    cards.push(['90% 到達', r.reach == null ? '—' : `${fmt(r.reach * 1000, 1)}<small>ms</small>`]);
+    cards.push(['速度オーバーシュート', `${fmt(r.over, 1)}<small>r/min</small>`]);
+    cards.push(['外乱での速度変動', r.dip == null ? '外乱なし' : `${fmt(r.dip, 1)}<small>r/min</small>`]);
+  } else {
+    cards.push(['最高速度', `${fmt(r.vmax)}<small>r/min</small>`]);
+    cards.push(['速度制限', r.limited ? '<span class="pill warn">作動</span>' : '<span class="pill ok">未作動</span>']);
+  }
+  cards.push(['ピークトルク', `${fmt(r.peak)}<small>%</small>`]);
+  cards.push(['実効トルク', `${fmt(r.rms)}<small>%</small>`]);
+  if (r.tailPP != null) cards.push(['停止中のトルク振れ幅', `${fmt(r.tailPP)}<small>%p-p</small>`]);
+  if (r.osc) cards.push(['振動周波数（目安）', `${fmt(r.oscF)}<small>Hz</small>`]);
+  $('metrics').innerHTML = cards.map(([k, v]) => `<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+}
+
+function renderDiagram(p, g) {
+  const pos = p.mode === 'pos', trq = p.mode === 'trq';
+  $('bd-posgrp').classList.toggle('off', !pos);
+  $('bd-spdgrp').classList.toggle('off', trq);
+  $('bd-spdout').classList.toggle('off', trq);
+  $('bd-spdin').hidden = p.mode !== 'spd';
+  $('bd-trqin').hidden = !trq;
+  $('bd-pg1').textContent = `PG1 ${fmt(g.pg1)}`;
+  $('bd-pg2').textContent = `PG2 ${fmt(g.pg2)}`;
+  $('bd-ff').textContent = `速度FF ${fmt(g.ff * 100)}%`;
+  $('bd-vg').textContent = `VG2 ${fmt(g.vg2)} / ${fmt(g.vic, 1)}ms`;
+  $('bd-flt').textContent = (g.lpf > 0 ? `LPF ${fmt(g.lpf)}Hz` : 'LPF なし') + (p.notchOn ? ' +N' : '');
+  $('bd-lim').textContent = `±${fmt(p.tlim)}%`;
+  $('bd-mot').textContent = p.reso ? `比${fmt(p.ratio, 1)} 共振${fmt(p.resoF)}Hz` : `慣性比 ${fmt(p.ratio, 1)}`;
+  $('bdHint').textContent = { pos: '位置ループ → 速度ループ → トルク', spd: '速度ループ → トルク（位置ループは使わない）', trq: 'トルク指令を直接。速度制限だけ速度ループが効く' }[p.mode];
+}
+
+function panelsFor(o) {
+  const C = { cmd: css('--cmd'), fb: css('--fb'), load: css('--load'), crit: css('--crit'), ok: css('--ok') };
+  const p = o.p, lim = o.Tmax / o.m.Tr * 100;
+  const loadS = p.reso ? [{ a: o.spdL, c: C.load, label: '負荷', w: 1 }] : [];
+  const trqP = { title: 'トルク', unit: '%', series: [{ a: o.trq, c: C.fb, label: '実トルク' }], hl: [lim, -lim] };
+  if (p.mode === 'pos') {
+    const errP = { title: '溜りパルス', unit: 'pulse', series: [{ a: o.err, c: C.fb, label: '溜り' }], band: p.inpos };
+    if ($('zoom').checked) errP.range = [-p.inpos * 6, p.inpos * 6];
+    return [
+      { title: '速度', unit: 'r/min', series: [{ a: o.cmdSpd, c: C.cmd, label: '指令', dash: true }, { a: o.spd, c: C.fb, label: 'モータ' }, ...loadS] },
+      trqP, errP,
+      { title: '位置', unit: 'rev', series: [{ a: o.posCmd, c: C.cmd, label: '指令', dash: true }, { a: o.pos, c: C.fb, label: 'モータ' }, ...(p.reso ? [{ a: o.posL, c: C.load, label: '負荷', w: 1 }] : [])], dec: 3 },
+    ];
+  }
+  if (p.mode === 'spd') return [
+    { title: '速度', unit: 'r/min', series: [{ a: o.cmdSpd, c: C.cmd, label: '指令', dash: true }, { a: o.spd, c: C.fb, label: 'モータ' }, ...loadS] },
+    trqP,
+    { title: '速度偏差', unit: 'r/min', series: [{ a: o.err, c: C.fb, label: '偏差' }], dec: 1 },
+    { title: '位置', unit: 'rev', series: [{ a: o.pos, c: C.fb, label: 'モータ' }], dec: 2 },
+  ];
+  return [
+    { title: '速度', unit: 'r/min', series: [{ a: o.spd, c: C.fb, label: 'モータ' }, ...loadS], hl: [p.tSpdLim, -p.tSpdLim] },
+    { title: 'トルク', unit: '%', series: [{ a: o.trqCmd, c: C.cmd, label: '指令', dash: true }, { a: o.trq, c: C.fb, label: '実トルク' }], hl: [lim, -lim] },
+    { title: '位置', unit: 'rev', series: [{ a: o.pos, c: C.fb, label: 'モータ' }], dec: 2 },
+  ];
+}
+
+function niceTicks(min, max, count) {
+  const span = max - min, raw = span / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+  const step = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag;
+  const out = []; for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-6; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  return out;
+}
+
+const PH = 150, PAD_L = 62, PAD_R = 14, PAD_T = 26, PAD_B = 10, AXIS_H = 22;
+let layout = null;
+
+function drawCharts() {
+  if (!sim) return;
+  const wrap = $('chartwrap'), base = $('cBase'), over = $('cOver');
+  const W = wrap.clientWidth, panels = panelsFor(sim), H = panels.length * PH + AXIS_H;
+  const dpr = window.devicePixelRatio || 1;
+  wrap.style.height = H + 'px';
+  for (const c of [base, over]) { c.width = W * dpr; c.height = H * dpr; c.style.height = H + 'px'; }
+  const ctx = base.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const ink = css('--ink'), muted = css('--muted'), grid = css('--grid'), line = css('--line');
+  const x0 = PAD_L, x1 = W - PAD_R, N = sim.N, tEnd = sim.tEnd;
+  const xOf = t => x0 + (t / tEnd) * (x1 - x0);
+  layout = { panels: [], x0, x1, W, H, xOf, tEnd };
+
+  ctx.font = '11px ' + css('--font-data');
+  panels.forEach((pn, k) => {
+    const top = k * PH + PAD_T, bot = (k + 1) * PH - PAD_B;
+    let lo, hi;
+    if (pn.range) [lo, hi] = pn.range;
+    else {
+      lo = Infinity; hi = -Infinity;
+      for (const s of pn.series) for (let i = 0; i < N; i++) { const v = s.a[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+      if (pn.band) { lo = Math.min(lo, -pn.band); hi = Math.max(hi, pn.band); }
+      if (pn.hl && pn.title === 'トルク') { const L = pn.hl[0]; if (hi > L * 0.8) hi = Math.max(hi, L); if (lo < -L * 0.8) lo = Math.min(lo, -L); }
+      if (!(hi - lo > 1e-6)) { const c = isFinite(lo) ? lo : 0; lo = c - 1; hi = c + 1; }
+      const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    }
+    const yOf = v => bot - (v - lo) / (hi - lo) * (bot - top);
+    layout.panels.push({ ...pn, top, bot, yOf, lo, hi });
+
+    // 枠・目盛
+    ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.strokeRect(x0 + .5, top + .5, x1 - x0, bot - top);
+    ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const v of niceTicks(lo, hi, 4)) {
+      const y = Math.round(yOf(v)) + .5; if (y < top || y > bot) continue;
+      ctx.strokeStyle = v === 0 ? line : grid; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.fillText(Math.abs(hi - lo) >= 20 ? fmt(v) : fmt(v, Math.abs(hi - lo) >= 2 ? 1 : 3), x0 - 6, y);
+    }
+    // インポジション帯
+    if (pn.band) {
+      ctx.fillStyle = css('--ok'); ctx.globalAlpha = .12;
+      const ya = Math.max(top, yOf(pn.band)), yb = Math.min(bot, yOf(-pn.band));
+      ctx.fillRect(x0, ya, x1 - x0, yb - ya); ctx.globalAlpha = 1;
+    }
+    if (pn.hl) {
+      ctx.strokeStyle = css('--crit'); ctx.globalAlpha = .55; ctx.setLineDash([3, 4]);
+      for (const v of pn.hl) { const y = Math.round(yOf(v)) + .5; if (y > top && y < bot) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); } }
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    // タイトル
+    ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.font = '600 12px ' + css('--font-body'); ctx.fillText(`${pn.title}`, x0, top - 8);
+    const tw = ctx.measureText(pn.title).width;
+    ctx.font = '11px ' + css('--font-data'); ctx.fillStyle = muted; ctx.fillText(pn.unit, x0 + tw + 6, top - 8);
+
+    // 波形（1 画素ごとに最小・最大で間引き）
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, top, x1 - x0, bot - top); ctx.clip();
+    for (const s of pn.series) {
+      ctx.strokeStyle = s.c; ctx.lineWidth = s.w || 1.6; ctx.setLineDash(s.dash ? [5, 4] : []);
+      ctx.beginPath();
+      const cols = Math.max(1, Math.floor(x1 - x0)), per = N / cols;
+      for (let c = 0; c < cols; c++) {
+        const a = Math.floor(c * per), b = Math.max(a + 1, Math.floor((c + 1) * per));
+        let mn = Infinity, mx = -Infinity;
+        for (let i = a; i < b && i < N; i++) { const v = s.a[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+        const x = x0 + c + .5;
+        if (c === 0) ctx.moveTo(x, yOf(mn)); else ctx.lineTo(x, yOf(mn));
+        if (mx !== mn) ctx.lineTo(x, yOf(mx));
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.restore();
+  });
+
+  // 時刻マーカー
+  const marks = [];
+  if (sim.p.dist !== 0 && sim.p.distT / 1000 < tEnd) marks.push([sim.p.distT / 1000, '外乱', css('--warn')]);
+  if (sim.metrics.settleAt != null && sim.metrics.settle > 0) marks.push([sim.metrics.settleAt, '整定', css('--ok')]);
+  if (sim.alarm) marks.push([sim.alarm.t, 'ALM', css('--crit')]);
+  ctx.font = '11px ' + css('--font-body'); ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+  for (const [t, lab, c] of marks) {
+    const x = Math.round(xOf(t)) + .5;
+    ctx.strokeStyle = c; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, panels.length * PH - PAD_B); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = c; ctx.fillText(lab, x + 3, PAD_T + 2);
+  }
+  // 時間軸
+  ctx.fillStyle = muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.font = '11px ' + css('--font-data');
+  const yAx = panels.length * PH - PAD_B + 4;
+  for (const v of niceTicks(0, tEnd * 1000, Math.max(3, Math.floor((x1 - x0) / 90)))) ctx.fillText(fmt(v), xOf(v / 1000), yAx);
+  ctx.textAlign = 'right'; ctx.fillText('ms', x1, yAx + 12 > H - 12 ? yAx : yAx + 12);
+  drawOverlay();
+}
+
+function drawOverlay() {
+  if (!sim || !layout) return;
+  const over = $('cOver'), dpr = window.devicePixelRatio || 1, ctx = over.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, layout.W, layout.H);
+  const i = Math.max(0, Math.min(sim.N - 1, cursor)), t = i * sim.dt, x = Math.round(layout.xOf(t)) + .5;
+  ctx.strokeStyle = css('--ink'); ctx.globalAlpha = .45; ctx.beginPath();
+  ctx.moveTo(x, PAD_T); ctx.lineTo(x, layout.panels.length * PH - PAD_B); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.font = '11px ' + css('--font-data'); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
+  for (const pn of layout.panels) {
+    let xr = layout.x1;
+    for (let s = pn.series.length - 1; s >= 0; s--) {
+      const se = pn.series[s], txt = `${se.label} ${fmt(se.a[i], pn.dec ?? (Math.abs(pn.hi - pn.lo) < 20 ? 1 : 0))}`;
+      ctx.fillStyle = se.c; ctx.fillText(txt, xr, pn.top - 8); xr -= ctx.measureText(txt).width + 14;
+      const y = pn.yOf(se.a[i]);
+      if (y >= pn.top && y <= pn.bot) { ctx.beginPath(); ctx.arc(x, y, 3, 0, TWO_PI); ctx.fill(); }
+    }
+  }
+  drawDisk(i); updateAmp(i);
+}
+
+function drawDisk(i) {
+  const cv = $('disk'), ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+  const W = 360, H = 180;
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const ink = css('--ink'), muted = css('--muted'), line = css('--line'), cmd = css('--cmd'), fb = css('--fb'), load = css('--load'), bg = css('--bg');
+  const disk = (cx, cy, r, ang, col, cmdAng, label) => {
+    ctx.fillStyle = bg; ctx.strokeStyle = line; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TWO_PI); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = line; ctx.lineWidth = 1;
+    for (let k = 0; k < 36; k++) { const a = k / 36 * TWO_PI, r0 = k % 9 === 0 ? r - 10 : r - 5; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); ctx.stroke(); }
+    const a = -Math.PI / 2 + ang * TWO_PI;
+    ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * (r - 12), cy + Math.sin(a) * (r - 12)); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, 5, 0, TWO_PI); ctx.fill();
+    if (cmdAng != null) {
+      const b = -Math.PI / 2 + cmdAng * TWO_PI, rr = r + 3;
+      ctx.fillStyle = cmd; ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(b) * rr, cy + Math.sin(b) * rr);
+      ctx.lineTo(cx + Math.cos(b - .09) * (rr + 11), cy + Math.sin(b - .09) * (rr + 11));
+      ctx.lineTo(cx + Math.cos(b + .09) * (rr + 11), cy + Math.sin(b + .09) * (rr + 11)); ctx.fill();
+    }
+    ctx.fillStyle = muted; ctx.font = '12px ' + css('--font-body'); ctx.textAlign = 'center'; ctx.fillText(label, cx, H - 4);
+  };
+  const posCmd = sim.p.mode === 'pos' ? sim.posCmd[i] : null;
+  disk(92, 82, 62, sim.pos[i], fb, posCmd, 'モータ');
+  ctx.strokeStyle = muted; ctx.lineWidth = 3;
+  if (sim.p.reso) { ctx.beginPath(); for (let k = 0; k <= 8; k++) { const xx = 160 + k * 6.5, yy = 82 + (k % 2 ? -6 : 6); k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); } ctx.stroke(); }
+  else { ctx.beginPath(); ctx.moveTo(156, 82); ctx.lineTo(216, 82); ctx.stroke(); }
+  disk(272, 82, 62, sim.posL[i], load, null, sim.p.reso ? '負荷（ばね結合）' : '負荷（剛体結合）');
+}
+
+function updateAmp(i) {
+  const p = sim.p, t = i * sim.dt;
+  $('d-t').textContent = (t * 1000).toFixed(1);
+  $('d-v').textContent = Math.round(sim.spd[i]).toString();
+  $('d-ek').textContent = p.mode === 'pos' ? '溜りパルス' : p.mode === 'spd' ? '速度偏差 r/min' : 'トルク指令 %';
+  $('d-e').textContent = p.mode === 'pos' ? Math.round(sim.err[i]).toString() : p.mode === 'spd' ? sim.err[i].toFixed(1) : sim.trqCmd[i].toFixed(0);
+  $('d-q').textContent = sim.trq[i].toFixed(0);
+  const alm = sim.alarm && t >= sim.alarm.t;
+  $('l-son').classList.toggle('lit', !alm);
+  $('l-inp').classList.toggle('lit', p.mode === 'pos' && !alm && Math.abs(sim.err[i]) <= p.inpos);
+  $('l-tlc').classList.toggle('lit', !alm && Math.abs(sim.trq[i]) >= sim.Tmax / sim.m.Tr * 100 * 0.98);
+  $('l-alm').classList.toggle('lit', !!alm);
+}
+
+// ---------- 実行・再生 ----------
+function run() {
+  syncAutoFields();
+  const p = readParams();
+  ['pos', 'spd', 'trq'].forEach(m => $('g-' + m).hidden = p.mode !== m);
+  $('zoomBox').hidden = p.mode !== 'pos';
+  const m = MOTORS[p.motor];
+  $('motorHint').textContent = `定格 ${m.Tr} N·m・最大 ${m.Tmax} N·m・ロータ慣性 ${(m.Jm * 1e4).toFixed(3)}×10⁻⁴ kg·m²（目安）` +
+    (p.reso && p.ratio > 0 ? `。反共振 ${fmt(p.resoF / Math.sqrt(1 + p.ratio))} Hz` : '');
+  const g = gainsFor(p);
+  sim = simulate(p, g);
+  renderDiagram(p, g); renderMetrics(sim);
+  if (!playing) cursor = sim.N - 1;
+  drawCharts();
+}
+
+let tmr = 0;
+const schedule = () => { clearTimeout(tmr); tmr = setTimeout(run, 90); };
+document.querySelectorAll('.ctl input, .ctl select').forEach(el => el.addEventListener('input', () => { markScenario(null); schedule(); }));
+$('zoom').addEventListener('change', drawCharts);
+
+function stop() { playing = false; cancelAnimationFrame(rafId); $('play').textContent = '▶ 再生'; }
+$('play').addEventListener('click', () => {
+  if (playing) return stop();
+  playing = true; $('play').textContent = '■ 停止';
+  const pace = $('pace').value, slow = pace === 'auto' ? 6 / sim.tEnd : 1 / +pace;
+  const startT = (cursor >= sim.N - 1) ? 0 : cursor * sim.dt, t0 = performance.now();
+  const step = now => {
+    const t = startT + (now - t0) / 1000 * slow;
+    cursor = Math.min(sim.N - 1, Math.floor(t / sim.dt));
+    drawOverlay();
+    if (cursor >= sim.N - 1) return stop();
+    rafId = requestAnimationFrame(step);
+  };
+  rafId = requestAnimationFrame(step);
+});
+
+const over = $('cOver');
+const seek = e => {
+  if (!layout) return;
+  const r = over.getBoundingClientRect(), x = e.clientX - r.left;
+  const t = (x - layout.x0) / (layout.x1 - layout.x0) * layout.tEnd;
+  cursor = Math.max(0, Math.min(sim.N - 1, Math.round(t / sim.dt)));
+  drawOverlay();
+};
+over.addEventListener('pointermove', e => { if (!playing) seek(e); });
+over.addEventListener('pointerdown', e => { stop(); seek(e); });
+
+// ---------- シナリオ ----------
+const DEFAULTS = {
+  'm-pos': true, pDist: 5, pSpeed: 3000, pAcc: 50, pRound: false,
+  sSpeed: 2000, sAcc: 100, sDec: 100, sHold: 300, tCmd: 50, tSpdLim: 1500, tDur: 250,
+  tune: 'auto', level: 16, ff: 0, notchOn: false, notchF: 400, notchD: '-40,0.35',
+  tlim: 300, inpos: 10, ppr: 10000, motor: '400', ratio: 5, fric: 5, dist: 0, distT: 250, reso: false, resoF: 400,
+};
+const SCEN = {
+  base: {},
+  ff: { ff: 80 },
+  high: { level: 33 },
+  inertia: { tune: 'manual', ratio: 12, gd2: 1, pg1: 60, pg2: 85, vg2: 510, vic: 39, lpf: 490 },
+  reso: { reso: true, level: 18 },
+  notch: { reso: true, level: 18, notchOn: true },
+  dist: { 'm-spd': true, dist: 80, distT: 220 },
+  torque: { 'm-trq': true, ratio: 3 },
+};
+function applyScenario(key) {
+  const v = { ...DEFAULTS, ...SCEN[key] };
+  for (const [id, val] of Object.entries(v)) {
+    const el = $(id); if (!el) continue;
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!val; else el.value = val;
+  }
+  syncAutoFields();
+  for (const id of ['gd2', 'pg1', 'pg2', 'vg2', 'vic', 'lpf']) if (v[id] != null && v.tune === 'manual') $(id).value = v[id];
+  markScenario(key); stop(); run();
+}
+function markScenario(key) { document.querySelectorAll('#scen button').forEach(b => b.classList.toggle('on', b.dataset.s === key)); }
+document.querySelectorAll('#scen button').forEach(b => b.addEventListener('click', () => applyScenario(b.dataset.s)));
+
+// テーマ・幅の変化で描き直す
+new ResizeObserver(() => drawCharts()).observe($('chartwrap'));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawCharts);
+new MutationObserver(drawCharts).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawCharts);
+
+window.__j5 = { simulate, readParams, gainsFor, applyScenario, get sim() { return sim; } };
+applyScenario('base');
+})();
+</script>
+</body>
+</html>

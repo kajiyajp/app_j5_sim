@@ -1,0 +1,1449 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>J5 サーボ制御シミュレータ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+JP:wght@400;500;600&family=Share+Tech+Mono&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
+<style>
+/* 単体で開くときの基本設定（Artifact では公開時に付く分） */
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; font-size: 14px; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<style>
+/* Layout: 上段に機械と操作盤、中段にラダーモニタとニーモニック編集、下段にトレース・デバイスモニタ・ポイントテーブル・割り付け。900px 未満は 1 列 */
+:root {
+  --bg: #ECEFF1;
+  --panel: #F9FAFB;
+  --ink: #1A2127;
+  --muted: #5B6670;
+  --line: #CAD1D7;
+  --grid: #E1E5E9;
+  --cmd: #1D5E9C;
+  --fb: #C55C14;
+  --on: #1660C9;
+  --on-soft: rgba(22, 96, 201, .16);
+  --stmt: #2E7048;
+  --ok: #2B7A4B;
+  --warn: #A86F12;
+  --crit: #B3261E;
+  --chip: #E2E7EB;
+  --metal: #9AA5AE;
+  --led-bg: #1B1714;
+  --led: #FF6A3D;
+  --led-dim: #4A2A1E;
+  --font-display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --font-body: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  --font-led: "Share Tech Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161A; --panel: #182026; --ink: #E2E7EB; --muted: #94A1AC; --line: #2D3943; --grid: #222C34;
+    --cmd: #63A9EA; --fb: #F2944D; --on: #5FA4F2; --on-soft: rgba(95, 164, 242, .2); --stmt: #6CC08F;
+    --ok: #5DC18B; --warn: #E2B252; --crit: #F2746B; --chip: #24303A; --metal: #5E6B76;
+    --led-bg: #0D0B0A; --led: #FF6A3D; --led-dim: #3A2219;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161A; --panel: #182026; --ink: #E2E7EB; --muted: #94A1AC; --line: #2D3943; --grid: #222C34;
+  --cmd: #63A9EA; --fb: #F2944D; --on: #5FA4F2; --on-soft: rgba(95, 164, 242, .2); --stmt: #6CC08F;
+  --ok: #5DC18B; --warn: #E2B252; --crit: #F2746B; --chip: #24303A; --metal: #5E6B76;
+  --led-bg: #0D0B0A; --led: #FF6A3D; --led-dim: #3A2219;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { border-bottom: 1px solid var(--line); }
+header.top .wrap { padding-block: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 95ch; }
+h2 { font-family: var(--font-display); font-weight: 700; font-size: 15px; margin: 0; }
+code, .mono { font-family: var(--font-data); }
+
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.bar .wrap { padding-block: 8px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.bar .sp { flex: 1; }
+
+.grid { display: grid; gap: 14px; padding-block: 14px 0; }
+.g-top { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+.g-mid, .g-low { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+@media (max-width: 960px) { .g-top, .g-mid, .g-low { grid-template-columns: minmax(0, 1fr); } }
+main.wrap { padding-bottom: 40px; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.card-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.hint { color: var(--muted); font-size: 12px; margin: 0; }
+.pno { font-family: var(--font-data); font-size: 11px; background: var(--chip); color: var(--muted); padding: 0 5px; border-radius: 3px; white-space: nowrap; }
+
+button { font: 500 13px var(--font-body); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .pb:focus-visible { outline: 2px solid var(--on); outline-offset: 1px; }
+select, input[type=number], input[type=text] { font: 13px var(--font-data); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+select { font-family: var(--font-body); }
+
+.seg { display: inline-grid; grid-auto-flow: column; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 4px 12px; cursor: pointer; font: 600 13px var(--font-data); border-left: 1px solid var(--line); }
+.seg label:first-of-type { border-left: 0; }
+#run-run:checked + label { background: var(--ok); color: #fff; }
+#run-stop:checked + label { background: var(--warn); color: #fff; }
+.seg input:focus-visible + label { outline: 2px solid var(--on); outline-offset: -2px; }
+
+.chip { font: 600 12px var(--font-body); padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.crit { color: var(--crit); }
+
+/* 機械 */
+#mach { width: 100%; height: 200px; display: block; }
+.readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.ro { border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; min-width: 0; }
+.ro .k { font-size: 11px; color: var(--muted); }
+.ro .v { font: 500 17px var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ro .v small { font-size: 11px; color: var(--muted); margin-left: 3px; }
+
+/* 操作盤 */
+.panel-io { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 520px) { .panel-io { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pb { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 6px; user-select: none; -webkit-user-select: none; touch-action: none; cursor: pointer; }
+.pb .cap { width: 34px; height: 34px; border-radius: 50%; background: var(--metal); border: 3px solid var(--line); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.pb.green .cap { background: #3F9B5E; } .pb.red .cap { background: #C5432F; } .pb.yellow .cap { background: #D3A12A; } .pb.blue .cap { background: #2F6FB8; }
+.pb.on .cap { box-shadow: inset 0 3px 4px rgba(0,0,0,.35); transform: translateY(1px); border-color: var(--on); }
+.pb .nm { font-size: 12px; font-weight: 600; text-align: center; line-height: 1.3; }
+.pb .ad { font: 11px var(--font-data); color: var(--muted); }
+.sw .cap { border-radius: 6px; width: 40px; position: relative; background: var(--chip); }
+.sw .cap::after { content: ""; position: absolute; left: 4px; top: 4px; width: 14px; height: 20px; border-radius: 3px; background: var(--muted); transition: left .12s; }
+.sw.on .cap::after { left: 16px; background: var(--on); }
+.sw.on .cap { transform: none; box-shadow: none; }
+.sw.estop .cap { background: #D3A12A; } .sw.estop.on .cap::after { background: #C5432F; }
+.lamps { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+.lamp { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.lamp i { width: 12px; height: 12px; border-radius: 50%; background: var(--chip); border: 1px solid var(--line); display: inline-block; }
+.lamp.lit { color: var(--ink); } .lamp.lit i { background: #F2B630; box-shadow: 0 0 6px #F2B630; border-color: transparent; }
+.lamp.lit.r i { background: #E5483A; box-shadow: 0 0 6px #E5483A; }
+.lamp.lit.g i { background: #46C46B; box-shadow: 0 0 6px #46C46B; }
+.amp { background: var(--led-bg); border-radius: 6px; padding: 10px 12px; color: #CFC6BE; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.amp .nm { font: 12px var(--font-body); color: #9C928A; }
+.amp b { font: 400 24px var(--font-led); color: var(--led); letter-spacing: .08em; text-shadow: 0 0 8px rgba(255,106,61,.35); }
+.amp .st { font: 12px var(--font-data); color: #E9DED5; }
+.amp .l { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 11px var(--font-data); }
+.amp .l span { display: inline-flex; align-items: center; gap: 4px; color: #8E847C; }
+.amp .l i { width: 8px; height: 8px; border-radius: 50%; background: var(--led-dim); display: inline-block; }
+.amp .l .lit { color: #E9DED5; } .amp .l .lit i { background: #59D67E; box-shadow: 0 0 5px #59D67E; }
+.amp .l .lit.r i { background: var(--led); box-shadow: 0 0 5px var(--led); }
+
+/* ラダー */
+.ladwrap { overflow: auto; max-height: 640px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+.lad { display: block; }
+.lad .w { stroke: var(--ink); stroke-width: 1.3; fill: none; }
+.lad .rail { stroke: var(--ink); stroke-width: 2; }
+.lad .hl { fill: transparent; }
+.lad .on .hl { fill: var(--on-soft); }
+.lad .w2 { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+.lad .on .w2 { stroke: var(--on); stroke-width: 2.4; }
+.lad .dev { fill: var(--ink); font: 500 10.5px var(--font-data); }
+.lad .on .dev { fill: var(--on); }
+.lad .val { fill: var(--muted); font: 10px var(--font-data); }
+.lad .stmt { fill: var(--stmt); font: 500 11.5px var(--font-body); }
+.lad .step { fill: var(--muted); font: 10px var(--font-data); }
+.lad .box { fill: var(--panel); stroke: var(--ink); stroke-width: 1.2; }
+.lad .on .box { fill: var(--on-soft); stroke: var(--on); stroke-width: 2; }
+.lad .btxt { fill: var(--ink); font: 500 11px var(--font-data); }
+
+/* エディタ */
+.ed { display: grid; grid-template-columns: 40px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; height: 420px; background: var(--bg); }
+.ed pre { margin: 0; padding: 8px 6px 8px 0; text-align: right; font: 12.5px/1.55 var(--font-data); color: var(--muted); overflow: hidden; background: var(--chip); user-select: none; }
+.ed textarea { border: 0; resize: none; padding: 8px 10px; font: 12.5px/1.55 var(--font-data); color: var(--ink); background: var(--bg); white-space: pre; overflow: auto; min-width: 0; }
+.palette { display: flex; flex-wrap: wrap; gap: 4px; }
+.palette button { font: 11.5px var(--font-data); padding: 2px 7px; }
+.msgs { display: flex; flex-direction: column; gap: 3px; max-height: 120px; overflow: auto; font-size: 12.5px; }
+.msgs button { all: unset; cursor: pointer; display: block; padding: 1px 4px; border-radius: 3px; }
+.msgs button:hover, .msgs button:focus-visible { background: var(--chip); }
+.msgs .e { color: var(--crit); } .msgs .w { color: var(--warn); }
+
+/* トレース・表 */
+#trace { width: 100%; display: block; }
+.tablewrap { overflow: auto; max-height: 380px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 11.5px; position: sticky; top: 0; background: var(--panel); }
+td.n { font-family: var(--font-data); font-variant-numeric: tabular-nums; text-align: right; }
+td.d { font-family: var(--font-data); }
+td.on { color: var(--on); font-weight: 600; }
+td.wrap { white-space: normal; min-width: 220px; }
+.pt input, .pt select { width: 100%; min-width: 64px; padding: 2px 4px; }
+.prm { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 14px; }
+.prm label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.prm input { width: 100%; }
+details summary { cursor: pointer; font-weight: 600; }
+.notes ul, .notes ol { margin: 4px 0 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 3px; max-width: 80ch; }
+.cols2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 760px) { .cols2 { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>J5 サーボ制御シミュレータ</h1>
+    <p>FX5UC-64MT/D の内蔵 Ethernet から CC-Link IE フィールドネットワーク Basic で MR-J5-40G を直結し、位置決めモード（ポイントテーブル方式）でボールねじ軸を動かす想定です。GX Works3 のニーモニックでラダーを書き換えて書き込むと、コントロールワードとステータスワードのやり取りが変わり、機械の動きが変わります。学習用の簡易モデルで、実機の値ではありません。</p>
+  </div>
+</header>
+
+<div class="bar">
+  <div class="wrap">
+    <div class="seg" role="radiogroup" aria-label="CPU の RUN/STOP">
+      <input type="radio" name="run" id="run-run" value="run" checked><label for="run-run">RUN</label>
+      <input type="radio" name="run" id="run-stop" value="stop"><label for="run-stop">STOP</label>
+    </div>
+    <button type="button" class="primary" id="write">変換＋書込み（F4）</button>
+    <span class="chip ok" id="progState">書込み済み</span>
+    <span class="sp"></span>
+    <label class="hint" for="speed">実行速度</label>
+    <select id="speed"><option value="1">実時間</option><option value="0.5">1/2</option><option value="0.2">1/5</option><option value="0.05">1/20</option></select>
+    <button type="button" id="power">電源再投入</button>
+  </div>
+</div>
+
+<main class="wrap">
+  <section class="grid g-top">
+    <div class="card">
+      <div class="card-h"><h2>機械（ボールねじ リード 10 mm、指令単位 1 µm）</h2><span class="hint" id="machMsg"></span></div>
+      <canvas id="mach" aria-label="ボールねじ軸の図。テーブル位置、近点ドグ、ストロークエンドを表示"></canvas>
+      <div class="readouts">
+        <div class="ro"><div class="k">テーブル位置（機械）</div><div class="v" id="r-pos">—</div></div>
+        <div class="ro"><div class="k">位置実際値 6064h</div><div class="v" id="r-pa">—</div></div>
+        <div class="ro"><div class="k">速度</div><div class="v" id="r-spd">—</div></div>
+        <div class="ro"><div class="k">偏差（指令−実）</div><div class="v" id="r-dev">—</div></div>
+        <div class="ro"><div class="k">トルク</div><div class="v" id="r-trq">—</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>操作盤（PLC 入力 X・出力 Y）</h2></div>
+      <div class="panel-io" id="panel"></div>
+      <div class="lamps" id="lampsY"></div>
+      <div class="amp">
+        <div><div class="nm">MR-J5-40G 表示</div><b id="ampDisp">----</b><div class="st" id="ampState"></div></div>
+        <div class="l">
+          <span id="a-link"><i></i>LINK</span><span id="a-dog"><i></i>DOG</span><span id="a-lsp"><i></i>LSP</span><span id="a-lsn"><i></i>LSN</span><span id="a-alm" class="r"><i></i>ALM</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" id="fault">サーボ異常を起こす</button>
+        <span class="hint">LSP・LSN・DOG はサーボアンプに配線（PLC の X ではない）。</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid g-mid">
+    <div class="card">
+      <div class="card-h"><h2>ラダー（モニタ中）</h2><span class="hint">青い接点・コイルが導通中。値はスキャンごとの現在値</span></div>
+      <div class="ladwrap"><svg class="lad" id="lad" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
+    <div class="card">
+      <div class="card-h">
+        <h2>プログラム（ニーモニック）</h2>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="sample" aria-label="サンプル">
+            <option value="s1">サンプル 1: 手動操作（サーボ ON・JOG・原点復帰・No.1）</option>
+            <option value="s2">サンプル 2: 自動往復（No.1 ↔ No.2）</option>
+            <option value="s3">サンプル 3: 誤り例（いきなり 15 を書く）</option>
+          </select>
+          <button type="button" id="loadSample">読み込む</button>
+        </div>
+      </div>
+      <div class="palette" id="palette" aria-label="命令の挿入"></div>
+      <div class="ed">
+        <pre id="gutter" aria-hidden="true"></pre>
+        <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="ニーモニック"></textarea>
+      </div>
+      <div class="msgs" id="msgs"></div>
+      <details>
+        <summary>使える命令</summary>
+        <ul class="hint" style="margin:6px 0 0;padding-left:1.2em">
+          <li>接点: <code>LD LDI LDP LDF AND ANI ANDP ANDF OR ORI ORP ORF ANB ORB</code></li>
+          <li>比較: <code>LD= LD&lt;&gt; LD&gt; LD&lt; LD&gt;= LD&lt;=</code>（AND・OR も同じ。32 ビットは <code>LDD=</code> など）</li>
+          <li>出力: <code>OUT SET RST PLS PLF</code>、タイマ <code>OUT T0 K10</code>（100 ms 単位）、カウンタ <code>OUT C0 K5</code></li>
+          <li>転送・演算: <code>MOV DMOV MOVP INC DEC + - D+ D-</code>（P 付きは立上りで 1 回）</li>
+          <li>デバイス: <code>X0〜X37 Y0〜Y37 M D T C SM400 SM402 SM412</code>、ワードのビット指定 <code>D1000.A</code>（.0〜.F）</li>
+          <li><code>;</code> から行末はコメント。コメントだけの行は回路の上に表示（ステートメント）</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <section class="grid g-low">
+    <div class="card">
+      <div class="card-h"><h2>トレース（直近 4 秒）</h2>
+        <label class="hint" style="display:flex;gap:6px;align-items:center">ビット <input type="text" id="traceDevs" value="X0,M30,D2000.4,D1000.C,D1000.A,D1000.2,X2,D1000.D" style="width:280px;max-width:60vw"></label>
+      </div>
+      <canvas id="trace" aria-label="速度・偏差・トルクとビットのトレース"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>デバイスモニタ</h2><span class="hint">プログラムで使うデバイス</span></div>
+      <div class="tablewrap"><table><thead><tr><th>デバイス</th><th style="text-align:right">値</th><th>コメント</th></tr></thead><tbody id="devmon"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="grid g-low">
+    <div class="card">
+      <div class="card-h"><h2>ポイントテーブル（MR-J5-G 側）</h2><span class="hint">MR Configurator2 で設定する内容に当たる。変更はすぐ反映</span></div>
+      <div class="tablewrap"><table class="pt"><thead><tr><th>No.</th><th>位置データ mm</th><th>回転速度 r/min</th><th>加速時定数 ms</th><th>減速時定数 ms</th><th>ドウェル ms</th><th>補助機能</th></tr></thead><tbody id="ptab"></tbody></table></div>
+      <div class="prm">
+        <label>原点復帰速度 r/min<input type="number" id="p-oprV" value="300" step="10" min="1"></label>
+        <label>クリープ速度 r/min<input type="number" id="p-creep" value="30" step="5" min="1"></label>
+        <label>JOG 加減速時定数 ms<input type="number" id="p-jogAcc" value="100" step="10" min="1"></label>
+        <label>リンク周期 ms<input type="number" id="p-link" value="5" step="1" min="1" max="50"></label>
+        <label>PA09 応答性（1〜40）<input type="number" id="p-level" value="16" step="1" min="1" max="40"></label>
+      </div>
+      <p class="hint">回転速度 600 r/min ＝ 100 mm/s。加減速時定数は 0 から定格 3000 r/min までの時間。補助機能 1・3 は次の No. へ続けて動く。原点復帰はドグ式・負方向で、ドグ後端（0 mm 側）を原点 0 にします（ゼロ点信号は省略）。</p>
+    </div>
+    <div class="card">
+      <div class="card-h"><h2>サイクリックデータの割り付け（局番 1）</h2></div>
+      <div class="tablewrap"><table><thead><tr><th>PLC</th><th>リンク</th><th>内容</th></tr></thead><tbody id="rmap"></tbody></table></div>
+      <p class="hint">GX Works3 の CC-Link IEF Basic 設定で RWw を D2000〜、RWr を D1000〜 にリフレッシュした想定です。RWw・RWr とオブジェクトの対応、JOG の割り当て（コントロールワード b4/b5）、アラーム番号の形はこのシミュレータでの例です。実機は MR-J5-G のユーザーズマニュアル（CC-Link IE フィールドネットワーク Basic 編）と、サーボ・PLC の設定で必ず確かめてください。</p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card notes">
+      <h2>動かし方</h2>
+      <div class="cols2">
+        <ol>
+          <li>サンプル 1 が書込み済み・RUN で始まります。サーボ ON スイッチ（X5）が ON なので、ステータスワードが 0250h → 0231h → 0233h → 0237h と進み、サーボ ON になります。</li>
+          <li>JOG+（X3）を押すとモードが jg に切り替わり、押している間だけ動きます。</li>
+          <li>原点復帰（X2）でモードを hm に切り替えて始動します。ドグ後端で止まり、位置実際値が 0 になります。</li>
+          <li>起動（X0）でポイントテーブル No.1（300 mm）へ動きます。</li>
+          <li>ニーモニックを書き換えて「変換＋書込み」（F4 か Ctrl+Enter）。RUN 中書込みとして、そのまま動作が変わります。</li>
+        </ol>
+        <ul>
+          <li>コントロールワードは CiA402 の状態遷移どおりに 6 → 7 → 15 と段階を踏みます。いきなり 15 を書いても ON しません（サンプル 3）。</li>
+          <li>始動（b4）は「モード表示 6061h が切り替わったこと」を確かめてから立ち上げます。</li>
+          <li>始動の受付（ステータス b12）を見たら b4 を下げ、到達（b10）で完了を判断します。</li>
+          <li>RWw・RWr はリンク周期（初期 5 ms）ごとにしか届きません。書いた次のスキャンでは、まだ結果が返っていません。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const TWO_PI = Math.PI * 2;
+const DT = 50e-6, SUB = 20;                 // 1 スキャン = 1 ms = 50 µs × 20
+const LEAD = 10;                            // ボールねじリード mm/rev
+const RATED = 3000;                         // 定格回転速度 r/min（加減速時定数の基準）
+const MECH = { start: 150, lsn: -20, lsp: 420, dogLo: 0, dogHi: 10, endLo: -32, endHi: 432 };
+const MOTOR = { Jm: 0.37e-4, Tr: 1.3, Tmax: 3.8, ratio: 3, fric: 0.05 };
+const RWW = 2000, RWR = 1000;               // リフレッシュ先 D
+const MODE = { PT: -101, JG: -100, HM: 6 };
+
+const prm = { oprV: 300, creep: 30, jogAcc: 100, link: 5, level: 16 };
+let ptab = [
+  { pos: 300, spd: 600, acc: 200, dec: 200, dwell: 0, aux: 0 },
+  { pos: 0, spd: 600, acc: 200, dec: 200, dwell: 0, aux: 0 },
+  { pos: 50, spd: 300, acc: 200, dec: 200, dwell: 0, aux: 2 },
+  { pos: -50, spd: 300, acc: 200, dec: 200, dwell: 0, aux: 2 },
+];
+const AUX = ['0: 絶対値・終了', '1: 絶対値・連続', '2: 増分値・終了', '3: 増分値・連続'];
+
+// リンクの割り付け（このシミュレータでの例）
+const RMAP = [
+  [RWW + 0, 'RWw0', '6040h コントロールワード', 'b0 スイッチオン・b1 電圧有効・b2 クイックストップ解除・b3 運転有効・b4 始動（pt・hm）/ JOG 正転（jg）・b5 JOG 逆転（jg）・b7 異常リセット・b8 一時停止'],
+  [RWW + 1, 'RWw1', '6060h 制御モード', '-101 ポイントテーブル（pt）・-100 JOG（jg）・6 原点復帰（hm）'],
+  [RWW + 2, 'RWw2', 'ポイントテーブル指定', '始動する No.（1〜4）'],
+  [RWW + 4, 'RWw4-5', 'JOG 速度（32 bit）', '単位 µm/s（50000 = 50 mm/s）'],
+  [RWR + 0, 'RWr0', '6041h ステータスワード', 'b0 スイッチオン可・b1 スイッチオン・b2 運転有効（サーボ ON）・b3 異常・b4 電圧有効・b5 クイックストップ解除・b6 スイッチオン禁止・b7 警告・b9 リモート・b10 到達・b12 始動受付（pt）/ 原点復帰完了（hm）・b13 原点復帰エラー（hm）'],
+  [RWR + 1, 'RWr1', '6061h 制御モード表示', '実際に切り替わった制御モード'],
+  [RWR + 2, 'RWr2', '完了ポイントテーブル No.', '最後に到達した No.'],
+  [RWR + 4, 'RWr4-5', '6064h 位置実際値（32 bit）', '単位 µm'],
+  [RWR + 6, 'RWr6-7', '606Ch 速度実際値（32 bit）', '単位 µm/s'],
+  [RWR + 8, 'RWr8', 'アラーム番号', '52 = AL.52 など。0 は正常'],
+];
+const RCOM = Object.fromEntries(RMAP.map(r => ['D' + r[0], r[2]]));
+const IOC = {
+  X0: '起動 PB', X1: '停止 PB（サンプル 1 は一時停止、2 はサイクル停止）', X2: '原点復帰 PB', X3: 'JOG+ PB', X4: 'JOG− PB', X5: 'サーボ ON SW', X6: '異常リセット PB', X7: '非常停止 SW',
+  Y0: '運転中ランプ', Y1: '原点復帰完了ランプ', Y2: '異常ランプ', Y3: '位置決め完了ランプ',
+  SM400: '常時 ON', SM402: 'RUN 後 1 スキャン ON', SM412: '1 秒クロック',
+};
+
+// ---------- サンプル ----------
+const SERVO_ON_OK = String.raw`; ===== サーボ ON（CiA402 の状態遷移を 1 段ずつ）=====
+; サーボ ON 要求 M100: サーボ ON スイッチ X5、非常停止 X7 で切れる
+LD X5
+ANI X7
+OUT M100
+; スイッチオン禁止（b6）→ Shutdown（6）
+LD M100
+AND D1000.6
+MOV K6 D2000
+; スイッチオン可（b0）でまだスイッチオンでない → Switch on（7）
+LD M100
+AND D1000.0
+ANI D1000.1
+MOV K7 D2000
+; スイッチオン（b1）以降 → Enable operation（15）
+LD M100
+AND D1000.1
+MOV K15 D2000
+; サーボ OFF 要求 → Shutdown（6）
+LDI M100
+MOV K6 D2000
+`;
+const SERVO_ON_NG = String.raw`; ===== サーボ ON（誤り: 状態を見ずに 15 を書く）=====
+LD X5
+ANI X7
+OUT M100
+LD M100
+MOV K15 D2000
+LDI M100
+MOV K6 D2000
+`;
+const COMMON_TAIL = String.raw`; ===== コントロールワードの各ビット（MOV のあとに書く）=====
+; b4: 原点復帰始動 M11・JOG 正転 M21・ポイントテーブル始動 M31
+LD M11
+OR M21
+OR M31
+OUT D2000.4
+; b5: JOG 逆転
+LD M22
+OUT D2000.5
+; b7: 異常リセット（X6）
+LD X6
+OUT D2000.7
+@HALT@; ===== ランプ: 運転中は速度実際値が ±1 mm/s を超えているとき =====
+LDD> D1006 K1000
+ORD< D1006 K-1000
+OUT Y0
+LD M40
+OUT Y1
+LD D1000.3
+OUT Y2
+LD= D1001 K-101
+AND D1000.A
+OUT Y3
+END
+`;
+const HOMING = String.raw`; ===== 原点復帰（X2）: モードを hm（6）にして始動 =====
+LDP X2
+AND D1000.2
+SET M10
+RST M40
+LD M10
+MOV K6 D2001
+; モード表示 6061h が 6 になってから始動（b4）
+LD M10
+AND= D1001 K6
+OUT M11
+; 原点復帰完了（b12）と到達（b10）で終わり
+LD M10
+AND= D1001 K6
+AND D1000.C
+AND D1000.A
+SET M40
+RST M10
+; 原点復帰エラー（b13）・異常で中止
+LD M10
+AND D1000.D
+OR D1000.3
+RST M10
+`;
+const S1 = SERVO_ON_OK + HOMING + String.raw`; ===== JOG（X3・X4）: モードを jg（-100）にする =====
+LD X3
+OR X4
+ANI M10
+OUT M20
+LD M20
+MOV K-100 D2001
+; JOG 速度 50 mm/s（単位 µm/s）
+LD SM400
+DMOV K50000 D2004
+LD X3
+ANI X4
+AND= D1001 K-100
+OUT M21
+LD X4
+ANI X3
+AND= D1001 K-100
+OUT M22
+; ===== ポイントテーブル No.1（X0）=====
+LDP X0
+ANI M10
+ANI M20
+AND D1000.2
+SET M30
+MOV K1 D2002
+; ふだんは pt（-101）
+LDI M10
+ANI M20
+MOV K-101 D2001
+; モード表示が pt のとき始動（b4）
+LD M30
+AND= D1001 K-101
+OUT M31
+; 始動受付（b12）を見たら b4 を下げる
+LD M30
+AND D1000.C
+RST M30
+` + COMMON_TAIL.replace('@HALT@', String.raw`; b8: 一時停止（X1 を押している間）
+LD X1
+OUT D2000.8
+`);
+
+const S2 =SERVO_ON_OK + HOMING + String.raw`; ===== 自動運転 M2: 起動 X0（原点復帰済み）で自己保持、停止 X1（サイクル停止）・非常停止・異常で切れる =====
+LD X0
+AND M40
+OR M2
+ANI X1
+ANI X7
+ANI D1000.3
+OUT M2
+; モードは pt（-101）
+LDI M10
+MOV K-101 D2001
+; 工程 D100: 1 No.1 始動・2 到達待ち・3 待ち・4 No.2 始動・5 到達待ち・6 待ち
+LDP M2
+AND= D100 K0
+MOV K1 D100
+; ポイントテーブル指定
+LD= D100 K1
+MOV K1 D2002
+LD= D100 K4
+MOV K2 D2002
+; 始動（b4）は 1 か所でまとめて出す
+LD= D100 K1
+OR= D100 K4
+AND= D1001 K-101
+OUT M31
+; 始動受付（b12）で次へ
+LD= D100 K1
+AND D1000.C
+MOV K2 D100
+LD= D100 K4
+AND D1000.C
+MOV K5 D100
+; 受付が消えて到達（b10）したら次へ
+LD= D100 K2
+ANI D1000.C
+AND D1000.A
+MOV K3 D100
+LD= D100 K5
+ANI D1000.C
+AND D1000.A
+MOV K6 D100
+; 待ち 0.5 秒
+LD= D100 K3
+OUT T0 K5
+LD T0
+MOV K4 D100
+LD= D100 K6
+OUT T1 K5
+LDP T1
+INC D101
+LD T1
+AND M2
+MOV K1 D100
+LD T1
+ANI M2
+MOV K0 D100
+; 異常・非常停止で工程を 0 に戻す
+LD D1000.3
+OR X7
+MOV K0 D100
+` + COMMON_TAIL.replace('@HALT@', String.raw`; 停止 X1 はサイクル停止に使うので、一時停止（b8）は使わない
+`);
+const SAMPLES = { s1: S1, s2: S2, s3: S1.replace(SERVO_ON_OK, SERVO_ON_NG) };
+
+// ---------- オペランド ----------
+function parseOperand(tok) {
+  let m;
+  if ((m = tok.match(/^K(-?\d+)$/))) return { k: 'k', v: parseInt(m[1], 10), raw: tok };
+  if ((m = tok.match(/^H([0-9A-F]+)$/))) return { k: 'k', v: parseInt(m[1], 16), raw: tok };
+  if (/^U\d+/.test(tok)) return { k: 'bad', raw: tok, why: 'この構成にユニット（U□）はありません。サーボとのやり取りは D1000〜（RWr）・D2000〜（RWw）です' };
+  let base = tok, bit = null;
+  const dot = tok.match(/^(.*)\.([0-9A-F])$/);
+  if (dot) { base = dot[1]; bit = parseInt(dot[2], 16); }
+  const sfx = bit == null ? '' : '.' + bit.toString(16).toUpperCase();
+  if ((m = base.match(/^(X|Y)([0-7]+)$/))) { if (bit != null) return null; const n = parseInt(m[2], 8); return { k: 'dev', t: m[1], n, bit: null, raw: m[1] + n.toString(8).toUpperCase() }; }
+  if ((m = base.match(/^(SM|SD|M|D|T|C)(\d+)$/))) {
+    if (bit != null && m[1] !== 'D') return null;
+    return { k: 'dev', t: m[1], n: +m[2], bit, raw: m[1] + (+m[2]) + sfx };
+  }
+  return null;
+}
+const isBitOp = a => a.k === 'dev' && ((['X', 'Y', 'M', 'SM', 'T', 'C'].includes(a.t) && a.bit == null) || (a.t === 'D' && a.bit != null));
+const isWordOp = a => a.k === 'k' || (a.k === 'dev' && ['D', 'SD', 'T', 'C'].includes(a.t) && a.bit == null);
+function checkRange(a) {
+  if (a.k === 'bad') return a.why;
+  if (a.k !== 'dev') return null;
+  if ((a.t === 'X' || a.t === 'Y') && a.n >= 32) return `${a.raw}: FX5UC-64MT/D の入出力は X0〜X37・Y0〜Y37 です`;
+  return null;
+}
+function writableBit(a) {
+  if (a.k !== 'dev') return 'ビットデバイスを指定します';
+  if (a.t === 'X') return `${a.raw} は入力です。OUT・SET では使えません`;
+  if (a.t === 'SM') return `${a.raw} はこのシミュレータでは書き込めません`;
+  if (a.t === 'T' || a.t === 'C') return `${a.raw}: タイマ・カウンタは OUT ${a.t}0 K10 の形で書きます`;
+  if (a.t === 'D' && a.bit == null) return `${a.raw}: ワードデバイスにはビット番号を付けます（例 ${a.raw}.0）`;
+  return null;
+}
+function writableWord(a) {
+  if (a.k !== 'dev' || a.t !== 'D' || a.bit != null) return `${a.raw} には書き込めません（D を指定）`;
+  return null;
+}
+
+// ---------- ニーモニックの解析 ----------
+const CONTACTS = { LD: ['ld', 'n'], LDI: ['ld', 'i'], LDP: ['ld', 'p'], LDF: ['ld', 'f'], AND: ['and', 'n'], ANI: ['and', 'i'], ANDP: ['and', 'p'], ANDF: ['and', 'f'], OR: ['or', 'n'], ORI: ['or', 'i'], ORP: ['or', 'p'], ORF: ['or', 'f'] };
+const CMP_RE = /^(LD|AND|OR)(D?)(=|<>|<=|>=|<|>)$/;
+const ser = (a, b) => ({ t: 's', items: [...(a.t === 's' ? a.items : [a]), ...(b.t === 's' ? b.items : [b])] });
+const par = (a, b) => ({ t: 'p', items: [...(a.t === 'p' ? a.items : [a]), ...(b.t === 'p' ? b.items : [b])] });
+
+function parseOut(op, args, ln, err) {
+  const A = args.map(parseOperand);
+  for (let i = 0; i < A.length; i++) {
+    if (!A[i]) { err(`${args[i]} は使えないオペランドです`); return null; }
+    const e = checkRange(A[i]); if (e) { err(e); return null; }
+  }
+  const need = k => { if (A.length !== k) { err(`${op} のオペランドは ${k} 個です（いまは ${A.length} 個）`); return false; } return true; };
+  const k16 = (dbl, ...idx) => {
+    if (dbl) return true;
+    for (const i of idx) { const a = A[i]; if (a.k === 'k' && (a.v < -32768 || a.v > 32767)) { err(`${a.raw} は 16 ビットの範囲（-32768〜32767）を超えます。D 付きの命令（DMOV など）を使ってください`); return false; } }
+    return true;
+  };
+  const word = i => { if (!isWordOp(A[i])) { err(`${A[i].raw} はワードの値として使えません`); return false; } return true; };
+  const base = { op, args: A, line: ln, label: [op, ...A.map(a => a.raw)].join(' '), prev: false, on: false };
+  let m;
+  if (op === 'OUT') {
+    if (A.length === 2 && A[0].k === 'dev' && (A[0].t === 'T' || A[0].t === 'C')) {
+      if (!word(1) || !k16(false, 1)) return null;
+      return { ...base, kind: 'tc' };
+    }
+    if (!need(1)) return null;
+    const e = writableBit(A[0]); if (e) { err(e); return null; }
+    return { ...base, kind: 'out' };
+  }
+  if (op === 'SET' || op === 'RST') {
+    if (!need(1)) return null;
+    const a = A[0];
+    if (op === 'RST' && a.k === 'dev' && a.bit == null && ['T', 'C', 'D'].includes(a.t)) return { ...base, kind: 'rstw' };
+    const e = writableBit(a); if (e) { err(e); return null; }
+    return { ...base, kind: op.toLowerCase() };
+  }
+  if (op === 'PLS' || op === 'PLF') {
+    if (!need(1)) return null;
+    if (!(A[0].k === 'dev' && (A[0].t === 'M' || A[0].t === 'Y'))) { err(`${op} は M か Y を指定します`); return null; }
+    return { ...base, kind: op.toLowerCase() };
+  }
+  if ((m = op.match(/^(D?)MOV(P?)$/))) {
+    if (!need(2) || !word(0)) return null;
+    const e = writableWord(A[1]); if (e) { err(e); return null; }
+    if (!k16(!!m[1], 0)) return null;
+    return { ...base, kind: 'mov', dbl: !!m[1], pulse: !!m[2] };
+  }
+  if ((m = op.match(/^(D?)(INC|DEC)(P?)$/))) {
+    if (!need(1)) return null;
+    const e = writableWord(A[0]); if (e) { err(e); return null; }
+    return { ...base, kind: 'inc', dir: m[2] === 'INC' ? 1 : -1, dbl: !!m[1], pulse: !!m[3] };
+  }
+  if ((m = op.match(/^(D?)([+-])(P?)$/))) {
+    if (!need(3) || !word(0) || !word(1)) return null;
+    const e = writableWord(A[2]); if (e) { err(e); return null; }
+    if (!k16(!!m[1], 0, 1)) return null;
+    return { ...base, kind: 'arith', sign: m[2] === '+' ? 1 : -1, dbl: !!m[1], pulse: !!m[3] };
+  }
+  if (/PSTRT|DRV|PLSV|DSZR/.test(op)) { err(`${op} は使いません。MR-J5-G 直結では D2000〜（RWw）にコントロールワードなどを書いて動かします`); return null; }
+  err(`${op} はこのシミュレータで使えない命令です（「使える命令」を参照）`);
+  return null;
+}
+
+function parseProgram(text) {
+  const lines = text.split(/\r?\n/), rungs = [], errors = [], warns = [];
+  let stack = [], outs = [], stmt = [], rc = null, rline = 0;
+  const err = (ln, msg) => errors.push({ line: ln, msg });
+  const flush = () => {
+    if (!stack.length && !outs.length) return;
+    if (!outs.length) err(rline, '出力（OUT・SET・MOV など）のない回路があります');
+    else rungs.push({ cond: stack[0], outs, comment: rc, line: rline });
+    stack = []; outs = []; rc = null;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const ln = i + 1;
+    let raw = lines[i], cm = null;
+    const sc = raw.indexOf(';');
+    if (sc >= 0) { cm = raw.slice(sc + 1).trim(); raw = raw.slice(0, sc); }
+    const toks = raw.trim().toUpperCase().split(/\s+/).filter(Boolean);
+    if (!toks.length) { if (cm) { if (outs.length) flush(); if (!stack.length) stmt.push(cm); } continue; }
+    const op = toks[0], args = toks.slice(1);
+    if (op === 'END') { flush(); break; }
+    if (op === 'NOP') continue;
+    const ct = CONTACTS[op], cmp = op.match(CMP_RE);
+    if (ct || cmp) {
+      let node;
+      if (ct) {
+        if (args.length !== 1) { err(ln, `${op} はデバイスを 1 つ指定します`); continue; }
+        const a = parseOperand(args[0]);
+        if (a && a.k === 'bad') { err(ln, a.why); continue; }
+        if (!a || !isBitOp(a)) { err(ln, `${args[0]} は接点に使えません（ワードはビット番号付きで。例 D1000.2）`); continue; }
+        const e = checkRange(a); if (e) { err(ln, e); continue; }
+        node = { t: 'c', mode: ct[1], a, w: 1, line: ln, prev: false, on: false };
+      } else {
+        if (args.length !== 2) { err(ln, `${op} は値を 2 つ指定します`); continue; }
+        const a = parseOperand(args[0]), b = parseOperand(args[1]);
+        const bad = [a, b].find(x => x && x.k === 'bad'); if (bad) { err(ln, bad.why); continue; }
+        if (!a || !b || !isWordOp(a) || !isWordOp(b)) { err(ln, `${op} にはワードの値を 2 つ指定します`); continue; }
+        const e = checkRange(a) || checkRange(b); if (e) { err(ln, e); continue; }
+        if (!cmp[2] && [a, b].some(x => x.k === 'k' && (x.v < -32768 || x.v > 32767))) { err(ln, `16 ビットの範囲を超えています。32 ビットの比較は ${cmp[1]}D${cmp[3]} を使います`); continue; }
+        node = { t: 'c', cmp: cmp[3], a, b, w: 2, line: ln, on: false };
+      }
+      const kind = ct ? ct[0] : cmp[1].toLowerCase();
+      if (kind === 'ld') {
+        if (outs.length) flush();
+        if (!stack.length) { rline = ln; rc = stmt.length ? stmt.join(' ／ ') : null; stmt = []; }
+        stack.push(node);
+      } else {
+        if (outs.length) { err(ln, '出力のあとに AND・OR は置けません。回路を分けてください'); continue; }
+        if (!stack.length) { err(ln, `${op} の前に LD がありません`); continue; }
+        const top = stack.pop();
+        stack.push(kind === 'and' ? ser(top, node) : par(top, node));
+      }
+      continue;
+    }
+    if (op === 'ANB' || op === 'ORB') {
+      if (outs.length) { err(ln, `出力のあとに ${op} は置けません`); continue; }
+      if (stack.length < 2) { err(ln, `${op} でつなぐブロックが 2 つありません`); continue; }
+      const b = stack.pop(), a = stack.pop();
+      stack.push(op === 'ANB' ? ser(a, b) : par(a, b));
+      continue;
+    }
+    const o = parseOut(op, args, ln, msg => err(ln, msg));
+    if (!o) continue;
+    if (!stack.length) { err(ln, `${op} の前に条件（LD …）がありません`); continue; }
+    if (stack.length > 1) { err(ln, `ブロックが ${stack.length} 個残っています。ANB か ORB でまとめてください`); stack = [stack.reduce(ser)]; }
+    outs.push(o);
+  }
+  flush();
+  const coils = new Map();
+  for (const r of rungs) for (const o of r.outs) if (o.kind === 'out') {
+    const k = o.args[0].raw; if (!coils.has(k)) coils.set(k, []); coils.get(k).push(o.line);
+  }
+  for (const [k, ls] of coils) if (ls.length > 1) warns.push({ line: ls[ls.length - 1], msg: `${k} が二重コイルです（${ls.join('・')} 行目）。後ろの回路の結果で上書きされます` });
+  return { rungs, errors, warns };
+}
+
+// ---------- PLC のデバイス ----------
+const S = { x: new Uint8Array(32), y: new Uint8Array(32), m: new Map(), d: new Map(), t: new Map(), c: new Map(), scan: 0, ms: 0 };
+function sm(n) {
+  if (n === 400) return true;
+  if (n === 401) return false;
+  if (n === 402) return S.scan === 0;
+  if (n === 412) return Math.floor(S.ms / 500) % 2 === 1;
+  return false;
+}
+function rdWordDev(a) {
+  switch (a.t) {
+    case 'D': return S.d.get(a.n) || 0;
+    case 'T': return S.t.get(a.n)?.cur || 0;
+    case 'C': return S.c.get(a.n)?.cur || 0;
+    default: return 0;
+  }
+}
+const rdWord = a => a.k === 'k' ? a.v : rdWordDev(a);
+function rdBit(a) {
+  switch (a.t) {
+    case 'X': return S.x[a.n] === 1;
+    case 'Y': return S.y[a.n] === 1;
+    case 'M': return !!S.m.get(a.n);
+    case 'SM': return sm(a.n);
+    case 'T': return !!S.t.get(a.n)?.on;
+    case 'C': return !!S.c.get(a.n)?.on;
+    default: return ((rdWordDev(a) >> a.bit) & 1) === 1;
+  }
+}
+const wrap16 = v => (v << 16) >> 16;
+function wrWord(a, v, dbl) { if (a.t === 'D') S.d.set(a.n, dbl ? (v | 0) : wrap16(v | 0)); }
+function wrBit(a, v) {
+  if (a.t === 'Y') S.y[a.n] = v ? 1 : 0;
+  else if (a.t === 'M') S.m.set(a.n, !!v);
+  else if (a.t === 'D') {
+    const cur = S.d.get(a.n) || 0;
+    S.d.set(a.n, wrap16(v ? (cur | (1 << a.bit)) : (cur & ~(1 << a.bit))));
+  }
+}
+const dw = n => S.d.get(n) || 0;
+
+// ---------- プログラムの実行 ----------
+const CMP = { '=': (a, b) => a === b, '<>': (a, b) => a !== b, '>': (a, b) => a > b, '<': (a, b) => a < b, '>=': (a, b) => a >= b, '<=': (a, b) => a <= b };
+function evalNode(n) {
+  if (n.t === 'c') {
+    let v;
+    if (n.cmp) v = CMP[n.cmp](rdWord(n.a), rdWord(n.b));
+    else {
+      const b = rdBit(n.a);
+      v = n.mode === 'n' ? b : n.mode === 'i' ? !b : n.mode === 'p' ? (b && !n.prev) : (!b && n.prev);
+      n.prev = b;
+    }
+    n.on = v; return v;
+  }
+  if (n.t === 's') { let r = true; for (const c of n.items) { if (!evalNode(c)) r = false; } n.on = r; return r; }
+  let r = false; for (const c of n.items) { if (evalNode(c)) r = true; } n.on = r; return r;
+}
+function execOut(o, cond) {
+  const rise = cond && !o.prev, fall = !cond && o.prev;
+  o.prev = cond; o.on = cond;
+  const A = o.args;
+  switch (o.kind) {
+    case 'out': wrBit(A[0], cond); break;
+    case 'set': if (cond) wrBit(A[0], true); break;
+    case 'rst': if (cond) wrBit(A[0], false); break;
+    case 'rstw': if (cond) { if (A[0].t === 'T') S.t.delete(A[0].n); else if (A[0].t === 'C') S.c.delete(A[0].n); else wrWord(A[0], 0, true); } break;
+    case 'pls': wrBit(A[0], rise); break;
+    case 'plf': wrBit(A[0], fall); break;
+    case 'tc': {
+      const a = A[0], pre = rdWord(A[1]);
+      if (a.t === 'T') {
+        let tm = S.t.get(a.n); if (!tm) { tm = { acc: 0, cur: 0, on: false }; S.t.set(a.n, tm); }
+        if (cond) { tm.acc += 1; tm.cur = Math.min(pre, Math.floor(tm.acc / 100)); tm.on = tm.cur >= pre; }
+        else { tm.acc = 0; tm.cur = 0; tm.on = false; }
+      } else {
+        let c = S.c.get(a.n); if (!c) { c = { cur: 0, on: false }; S.c.set(a.n, c); }
+        if (rise && c.cur < pre) c.cur++;
+        c.on = c.cur >= pre;
+      }
+      break;
+    }
+    case 'mov': if (o.pulse ? rise : cond) wrWord(A[1], rdWord(A[0]), o.dbl); break;
+    case 'inc': if (o.pulse ? rise : cond) wrWord(A[0], rdWord(A[0]) + o.dir, o.dbl); break;
+    case 'arith': if (o.pulse ? rise : cond) wrWord(A[2], rdWord(A[0]) + o.sign * rdWord(A[1]), o.dbl); break;
+  }
+}
+
+// ---------- 機械とサーボモータ（制御ループ） ----------
+const mach = { lspOK: true, lsnOK: true, dog: false };
+const mot = {
+  th: 0, w: 0, T: 0, Tf: 0, xm: 0, integ: 0, k: 0, thc: 0, crash: false,
+  bufTh: new Float64Array(5), bufW: new Float64Array(5),
+  pos() { return MECH.start + this.th / TWO_PI * LEAD; },
+  gains() { const fs = 10 * Math.pow(1.15, prm.level - 1), vg2 = TWO_PI * fs; return { vg2, pg2: vg2 / 6, pg1: vg2 / 4, vic: 10 / vg2, lpf: Math.min(4500, fs * 6) }; },
+  step(dt, on) {
+    const g = this.gains(), Jt = MOTOR.Jm * (1 + MOTOR.ratio), Tr = MOTOR.Tr;
+    const pos = this.pos();
+    mach.lspOK = pos < MECH.lsp; mach.lsnOK = pos > MECH.lsn; mach.dog = pos >= MECH.dogLo && pos <= MECH.dogHi;
+    const k = this.k, thD = this.bufTh[k], wD = this.bufW[k];
+    this.bufTh[k] = this.th; this.bufW[k] = this.w; this.k = (k + 1) % 5;
+    this.thc = (drv.cmd - MECH.start) / LEAD * TWO_PI;
+    let Tcmd = 0;
+    if (on) {
+      const vc = drv.v / LEAD * TWO_PI;
+      const vm = g.pg1 * (this.thc - this.xm) + vc; this.xm += vm * dt;
+      const e = g.pg2 * (this.xm - thD) + vm - wD;
+      this.integ += e * dt;
+      Tcmd = Jt * g.vg2 * (e + this.integ / g.vic);
+      if (Math.abs(Tcmd) > MOTOR.Tmax && Math.sign(Tcmd) === Math.sign(e)) this.integ -= e * dt;
+    } else { this.xm = this.th; this.integ = 0; }
+    this.Tf += (Tcmd - this.Tf) * (1 - Math.exp(-TWO_PI * g.lpf * dt));
+    const Tl = on ? Math.max(-MOTOR.Tmax, Math.min(MOTOR.Tmax, this.Tf)) : 0;
+    this.T = on ? this.T + (Tl - this.T) * (1 - Math.exp(-dt / 1e-4)) : 0;
+    // サーボ OFF 中はダイナミックブレーキ相当の制動
+    const db = on ? 0 : 0.02 * this.w;
+    const fr = MOTOR.fric * Tr * Math.tanh(this.w / 2);
+    this.w += (this.T - fr - db) / Jt * dt;
+    this.th += this.w * dt;
+    const p2 = this.pos();
+    if (p2 > MECH.endHi || p2 < MECH.endLo) { this.th = ((p2 > MECH.endHi ? MECH.endHi : MECH.endLo) - MECH.start) / LEAD * TWO_PI; this.w = 0; this.crash = true; }
+    if (on && Math.abs(this.thc - this.th) > 3 * TWO_PI) drv.trip(52, '誤差過大');
+  },
+};
+
+// ---------- MR-J5-G（CiA402 の状態遷移・位置決めモード） ----------
+const ST = { SOD: 'スイッチオン禁止', RTSO: 'スイッチオン可', SO: 'スイッチオン', OE: '運転有効（サーボ ON）', QSA: 'クイックストップ中', FAULT: '異常' };
+const drv = {
+  state: 'SOD', cw: 0, prevCw: 0, mode: MODE.PT, modeReq: MODE.PT, modeT: 0, tpt: 0, jogV: 0,
+  alarm: 0, alarmMsg: '', warn: '', oeT: 0,
+  cmd: MECH.start, v: 0, task: 'idle', target: 0, vt: 0, acc: 1, dec: 1, dwell: 0, no: 0, halting: false,
+  offset: MECH.start, reached: true, ack: false, homeDone: false, homeErr: false, donePt: 0, oprPhase: 0, jogDir: 0,
+  on() { return this.state === 'OE' || this.state === 'QSA'; },
+  trip(code, msg) { if (!this.alarm) { this.alarm = code; this.alarmMsg = msg; this.state = 'FAULT'; this.abort(); } },
+  abort() { this.task = 'idle'; this.v = 0; this.cmd = mot.pos(); this.halting = false; },
+  status() {
+    const base = { SOD: 0x0040, RTSO: 0x0021, SO: 0x0023, OE: 0x0027, QSA: 0x0007, FAULT: 0x0008 }[this.state];
+    let s = base | 0x0010 | 0x0200;
+    if (this.warn) s |= 0x0080;
+    if (this.reached) s |= 0x0400;
+    if (this.mode === MODE.PT && this.ack) s |= 0x1000;
+    if (this.mode === MODE.HM && this.homeDone) s |= 0x1000;
+    if (this.mode === MODE.HM && this.homeErr) s |= 0x2000;
+    return wrap16(s);
+  },
+  // リンク受信（RWw が届いたとき）
+  receive(rw) {
+    const cw = rw[0] & 0xFFFF, prev = this.cw;
+    this.prevCw = prev; this.cw = cw;
+    this.modeReq = rw[1]; this.tpt = rw[2]; this.jogV = rw[4];
+    const rise = b => ((cw >> b) & 1) === 1 && ((prev >> b) & 1) === 0;
+    // 状態遷移
+    if (this.state === 'FAULT') { if (rise(7)) { this.alarm = 0; this.alarmMsg = ''; mot.crash = false; this.state = 'SOD'; } }
+    else {
+      const dis = (cw & 0x02) === 0, qs = (cw & 0x06) === 0x02, sd = (cw & 0x87) === 0x06, son = (cw & 0x8F) === 0x07, en = (cw & 0x8F) === 0x0F;
+      if (dis) { if (this.state !== 'SOD') this.abort(); this.state = 'SOD'; }
+      else if (qs) { if (this.state === 'OE') { this.state = 'QSA'; this.stopMotion(true); } else if (this.state !== 'QSA') this.state = 'SOD'; }
+      else if (sd) { if (this.state === 'SOD') this.state = 'RTSO'; else if (this.state !== 'RTSO') { this.abort(); this.state = 'RTSO'; } }
+      else if (son) { if (this.state === 'RTSO') this.state = 'SO'; else if (this.state === 'OE') { this.abort(); this.state = 'SO'; } }
+      else if (en) { if (this.state === 'SO') { this.state = 'OE'; this.oeT = 0; this.cmd = mot.pos(); } }
+    }
+    if (!this.on()) { this.ack = false; return; }
+    // 制御モードの切り替え（停止中のみ）
+    if (this.modeReq !== this.mode && this.task === 'idle' && [MODE.PT, MODE.JG, MODE.HM].includes(this.modeReq)) { this.mode = this.modeReq; this.homeErr = false; }
+    if (this.state !== 'OE') return;
+    const halt = ((cw >> 8) & 1) === 1;
+    if (halt && this.task !== 'idle') this.stopMotion(false);
+    if (this.mode === MODE.PT) {
+      if (!((cw >> 4) & 1)) this.ack = false;
+      if (rise(4) && !halt && this.task === 'idle') {
+        if (this.tpt >= 1 && this.tpt <= ptab.length) { this.ack = true; this.reached = false; this.startPt(this.tpt); }
+        else this.warn = 'ポイントテーブル番号の範囲外';
+      }
+    } else if (this.mode === MODE.HM) {
+      if (rise(4) && !halt && this.task === 'idle') {
+        this.task = 'home'; this.oprPhase = mach.dog ? 1 : 0; this.homeDone = false; this.homeErr = false; this.reached = false;
+        this.acc = this.dec = (RATED / 60 * LEAD) / 0.1;
+      }
+    } else if (this.mode === MODE.JG) {
+      const f = (cw >> 4) & 1, r = (cw >> 5) & 1, dir = f && !r ? 1 : r && !f ? -1 : 0;
+      if (dir && this.task === 'idle' && !halt) { this.task = 'jog'; this.jogDir = dir; this.reached = false; this.acc = this.dec = (RATED / 60 * LEAD) / (prm.jogAcc / 1000); }
+      if (this.task === 'jog') { if (dir !== this.jogDir) this.stopMotion(false); else this.vt = dir * Math.min(Math.abs(this.jogV) / 1000, RATED / 60 * LEAD); }
+    }
+  },
+  startPt(no) {
+    const d = ptab[no - 1];
+    this.no = no; this.task = 'pos'; this.halting = false;
+    this.target = d.aux >= 2 ? this.cmd + d.pos : this.offset + d.pos;
+    this.vt = Math.max(1, Math.min(d.spd, RATED * 2)) / 60 * LEAD;
+    const vr = RATED / 60 * LEAD;
+    this.acc = vr / Math.max(0.001, d.acc / 1000); this.dec = vr / Math.max(0.001, d.dec / 1000);
+  },
+  stopMotion(quick) { if (this.task !== 'idle' && this.task !== 'dwell') { this.halting = true; if (quick) this.dec *= 4; } else if (this.task === 'dwell') { this.task = 'idle'; } },
+  step(dt) {
+    if (this.state === 'OE') this.oeT += dt;
+    if (this.state === 'QSA' && this.task === 'idle') { this.state = 'SOD'; this.cmd = mot.pos(); this.v = 0; }
+    const on = this.on() && this.oeT >= 0.03;
+    if (!this.on()) { this.cmd = mot.pos(); this.v = 0; }
+    // ストロークエンド（警告。その方向には動かない）
+    const lsWarn = !mach.lspOK ? 'AL.99 正転ストロークエンド' : !mach.lsnOK ? 'AL.99 逆転ストロークエンド' : '';
+    if (lsWarn) this.warn = lsWarn; else if (this.warn.startsWith('AL.99')) this.warn = '';
+    if (this.task === 'idle' || !on) { mot.step(dt, on); return; }
+    if (this.task === 'dwell') { this.dwell -= dt; if (this.dwell <= 0) this.endPt(); mot.step(dt, on); return; }
+    let want;
+    if (this.halting) want = 0;
+    else if (this.task === 'pos') { const rem = this.target - this.cmd; want = Math.sign(rem) * Math.min(this.vt, Math.sqrt(2 * this.dec * Math.abs(rem))); }
+    else if (this.task === 'jog') want = this.vt;
+    else want = -(this.oprPhase === 0 ? prm.oprV : prm.creep) / 60 * LEAD;
+    const speedUp = Math.abs(want) > Math.abs(this.v) && (this.v === 0 || Math.sign(want) === Math.sign(this.v));
+    const rate = speedUp ? this.acc : this.dec;
+    if (this.v < want) this.v = Math.min(want, this.v + rate * dt); else this.v = Math.max(want, this.v - rate * dt);
+    let done = false;
+    if (this.task === 'pos' && !this.halting) {
+      const rem = this.target - this.cmd;
+      if (Math.abs(rem) < 1e-6 || (Math.sign(this.v) === Math.sign(rem) && Math.abs(this.v * dt) >= Math.abs(rem))) { this.cmd = this.target; this.v = 0; done = true; }
+    }
+    if (!done) this.cmd += this.v * dt;
+    if ((this.v > 0 && !mach.lspOK) || (this.v < 0 && !mach.lsnOK)) {
+      if (this.task === 'home') this.homeErr = true;
+      this.abort(); mot.step(dt, on); return;
+    }
+    if (done) { const d = ptab[this.no - 1]; if (d.dwell > 0) { this.task = 'dwell'; this.dwell = d.dwell / 1000; } else this.endPt(); }
+    else if (this.halting && this.v === 0) { this.task = 'idle'; this.halting = false; this.reached = true; }
+    else if (this.task === 'home') {
+      if (this.oprPhase === 0 && mach.dog) this.oprPhase = 1;
+      else if (this.oprPhase === 1 && !mach.dog) { this.v = 0; this.offset = this.cmd; this.task = 'idle'; this.homeDone = true; this.reached = true; }
+    }
+    mot.step(dt, on);
+  },
+  endPt() {
+    const d = ptab[this.no - 1];
+    if ((d.aux === 1 || d.aux === 3) && this.no < ptab.length) { this.startPt(this.no + 1); return; }
+    this.task = 'idle'; this.reached = true; this.donePt = this.no;
+  },
+  tx() {   // RWr に載せる値
+    return [this.status(), this.mode, this.donePt, 0, Math.round((mot.pos() - this.offset) * 1000), 0, Math.round(mot.w / TWO_PI * LEAD * 1000), 0, this.alarm];
+  },
+};
+
+// ---------- 入力（操作盤） ----------
+const PANEL = [
+  { x: 0, nm: '起動', c: 'green' }, { x: 1, nm: '停止', c: 'red' }, { x: 2, nm: '原点復帰', c: 'blue' }, { x: 6, nm: '異常<br>リセット', c: 'yellow' },
+  { x: 3, nm: 'JOG+', c: '' }, { x: 4, nm: 'JOG−', c: '' }, { x: 5, nm: 'サーボ ON', sw: true }, { x: 7, nm: '非常停止', sw: true, estop: true },
+];
+const panelIn = new Uint8Array(32);
+panelIn[5] = 1;
+
+// ---------- 実行ループ ----------
+let prog = { rungs: [], errors: [], warns: [] };
+let plcRun = true, speed = 1, linkT = 0;
+const TN = 4000;
+const tr = { spdC: new Float32Array(TN), spdA: new Float32Array(TN), dev: new Float32Array(TN), trq: new Float32Array(TN), bits: [], i: 0, n: 0 };
+let traceOps = [];
+
+function scanOnce() {
+  for (let i = 0; i < 32; i++) S.x[i] = panelIn[i];
+  if (plcRun) {
+    for (const r of prog.rungs) { const c = evalNode(r.cond); for (const o of r.outs) execOut(o, c); }
+    S.scan++;
+  }
+  // CC-Link IEF Basic のリンク（リンク周期ごとに RWw を送り、RWr を受け取る）
+  linkT += 1;
+  if (linkT >= prm.link) {
+    linkT = 0;
+    const rw = []; for (let k = 0; k < 8; k++) rw.push(plcRun ? dw(RWW + k) : 0);
+    drv.receive(rw);
+    const rr = drv.tx(); for (let k = 0; k < rr.length; k++) S.d.set(RWR + k, rr[k]);
+  }
+  for (let k = 0; k < SUB; k++) drv.step(DT);
+  S.ms++;
+  const i = tr.i;
+  tr.spdC[i] = drv.v; tr.spdA[i] = mot.w / TWO_PI * LEAD;
+  tr.dev[i] = (mot.thc - mot.th) / TWO_PI * LEAD * 1000; tr.trq[i] = mot.T / MOTOR.Tr * 100;
+  for (let b = 0; b < traceOps.length; b++) tr.bits[b][i] = rdBit(traceOps[b]) ? 1 : 0;
+  tr.i = (i + 1) % TN; tr.n = Math.min(TN, tr.n + 1);
+}
+
+function plcStop() {
+  S.y.fill(0); S.m.clear(); S.t.clear(); S.c.clear();
+  for (const k of [...S.d.keys()]) if (k < RWR || k > RWR + 15) S.d.delete(k);
+  S.scan = 0;
+  for (const r of prog.rungs) resetStates(r);
+}
+function resetStates(r) {
+  const walk = n => { n.on = false; n.prev = false; if (n.items) n.items.forEach(walk); };
+  walk(r.cond);
+  for (const o of r.outs) { o.prev = false; o.on = false; }
+}
+
+// ---------- 書込み・エディタ ----------
+const src = $('src'), gutter = $('gutter');
+let written = '';
+function updGutter() {
+  const n = src.value.split('\n').length;
+  let s = ''; for (let i = 1; i <= n; i++) s += i + '\n';
+  gutter.textContent = s; gutter.scrollTop = src.scrollTop;
+}
+src.addEventListener('scroll', () => { gutter.scrollTop = src.scrollTop; });
+let lintT = 0;
+src.addEventListener('input', () => {
+  updGutter(); setState();
+  clearTimeout(lintT); lintT = setTimeout(() => showMsgs(parseProgram(src.value)), 250);
+  try { localStorage.setItem('j5g-src', src.value); } catch (e) {}
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'F4' || (e.target === src && e.key === 'Enter' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); writeProgram(); }
+});
+function setState(text, cls) {
+  const el = $('progState');
+  if (text) { el.textContent = text; el.className = 'chip ' + cls; return; }
+  if (src.value === written) { el.textContent = '書込み済み'; el.className = 'chip ok'; }
+  else { el.textContent = '未変換（F4 で書込み）'; el.className = 'chip warn'; }
+}
+function showMsgs(p) {
+  const box = $('msgs');
+  const items = [...p.errors.map(e => ({ ...e, c: 'e', h: 'エラー' })), ...p.warns.map(e => ({ ...e, c: 'w', h: '注意' }))].sort((a, b) => a.line - b.line);
+  box.innerHTML = '';
+  if (!items.length) { box.innerHTML = '<span class="hint">エラーはありません。</span>'; return; }
+  for (const it of items) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = it.c;
+    b.textContent = `${it.line} 行目 ${it.h}: ${it.msg}`;
+    b.addEventListener('click', () => gotoLine(it.line));
+    box.appendChild(b);
+  }
+}
+function gotoLine(ln) {
+  const lines = src.value.split('\n'); let p = 0;
+  for (let i = 0; i < ln - 1 && i < lines.length; i++) p += lines[i].length + 1;
+  src.focus(); src.setSelectionRange(p, p + (lines[ln - 1] || '').length);
+  src.scrollTop = Math.max(0, (ln - 4) * 19.4);
+}
+function writeProgram() {
+  const p = parseProgram(src.value);
+  showMsgs(p);
+  if (p.errors.length) { setState(`エラー ${p.errors.length} 件。書き込んでいません`, 'crit'); return; }
+  prog = p; written = src.value;
+  buildLadder(); buildDevMon();
+  setState();
+}
+const PAL = ['LD X0', 'LDI X0', 'LDP X0', 'AND X0', 'ANI X0', 'OR M0', 'OUT Y0', 'SET M0', 'RST M0', 'OUT T0 K10', 'MOV K15 D2000', 'MOV K-101 D2001', 'MOV K1 D2002', 'OUT D2000.4', 'LD D1000.2', 'AND D1000.C', 'AND D1000.A', 'AND= D1001 K-101'];
+for (const t of PAL) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+  b.addEventListener('click', () => {
+    const v = src.value, pos = src.selectionEnd, eol = v.indexOf('\n', pos), at = eol < 0 ? v.length : eol;
+    const ins = '\n' + t; src.value = v.slice(0, at) + ins + v.slice(at);
+    const np = at + ins.length; src.focus(); src.setSelectionRange(np - t.length, np);
+    src.dispatchEvent(new Event('input'));
+  });
+  $('palette').appendChild(b);
+}
+let confirmT = 0;
+$('loadSample').addEventListener('click', () => {
+  const b = $('loadSample');
+  const dirty = src.value !== written && !Object.values(SAMPLES).includes(src.value);
+  if (dirty && !confirmT) { b.textContent = '編集中の内容を置き換える'; confirmT = setTimeout(() => { b.textContent = '読み込む'; confirmT = 0; }, 3000); return; }
+  clearTimeout(confirmT); confirmT = 0; b.textContent = '読み込む';
+  src.value = SAMPLES[$('sample').value]; updGutter();
+  try { localStorage.setItem('j5g-src', src.value); } catch (e) {}
+  writeProgram();
+});
+$('write').addEventListener('click', writeProgram);
+document.querySelectorAll('input[name=run]').forEach(r => r.addEventListener('change', () => {
+  const run = $('run-run').checked;
+  if (run !== plcRun) plcStop();
+  plcRun = run;
+}));
+$('speed').addEventListener('change', e => { speed = +e.target.value; });
+$('power').addEventListener('click', () => {
+  plcStop(); for (const k of [...S.d.keys()]) S.d.delete(k);
+  Object.assign(drv, { state: 'SOD', cw: 0, prevCw: 0, mode: MODE.PT, alarm: 0, alarmMsg: '', warn: '', task: 'idle', v: 0, cmd: mot.pos(), offset: mot.pos(), reached: true, ack: false, homeDone: false, homeErr: false, donePt: 0, halting: false });
+  Object.assign(mot, { crash: false, integ: 0, T: 0, Tf: 0, w: 0 });
+  tr.n = 0;
+});
+$('fault').addEventListener('click', () => drv.trip(52, '誤差過大（模擬）'));
+
+// ---------- 操作盤の描画 ----------
+function buildPanel() {
+  const box = $('panel');
+  for (const p of PANEL) {
+    const el = document.createElement('div');
+    el.className = 'pb ' + (p.sw ? 'sw' : p.c) + (p.estop ? ' estop' : '');
+    el.tabIndex = 0; el.setAttribute('role', p.sw ? 'switch' : 'button');
+    el.innerHTML = `<span class="cap"></span><span class="nm">${p.nm}</span><span class="ad">X${p.x.toString(8)}</span>`;
+    const set = v => { panelIn[p.x] = v ? 1 : 0; };
+    if (p.sw) {
+      const tog = () => set(!panelIn[p.x]);
+      el.addEventListener('click', tog);
+      el.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tog(); } });
+    } else {
+      el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); set(1); });
+      const up = () => set(0);
+      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
+      el.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); set(1); } });
+      el.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') set(0); });
+    }
+    p.el = el; box.appendChild(el);
+  }
+  $('lampsY').innerHTML = [['Y0', '運転中', 'g'], ['Y1', '原点復帰完了', ''], ['Y2', '異常', 'r'], ['Y3', '位置決め完了', 'g']]
+    .map(([d, n, c]) => `<span class="lamp ${c}" data-y="${parseInt(d.slice(1), 8)}"><i></i>${d} ${n}</span>`).join('');
+}
+
+// ---------- ラダー図 ----------
+const CW = 74, RH = 50, OW = 250, LX = 46;
+let ladRefs = [];
+function sizeOf(n) {
+  if (n.t === 'c') return { w: n.w, h: 1 };
+  const s = n.items.map(sizeOf);
+  if (n.t === 's') return { w: s.reduce((a, b) => a + b.w, 0), h: Math.max(...s.map(x => x.h)) };
+  return { w: Math.max(...s.map(x => x.w)), h: s.reduce((a, b) => a + b.h, 0) };
+}
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function buildLadder() {
+  const svg = $('lad');
+  let maxW = 4;
+  for (const r of prog.rungs) maxW = Math.max(maxW, sizeOf(r.cond).w);
+  const busX = LX + maxW * CW + 22, outX = busX + 14, railR = outX + OW;
+  const W = railR + 12;
+  let y = 8; const parts = []; ladRefs = [];
+  let gid = 0;
+  const G0 = () => { const id = 'lg' + (gid++); return { id, open: `<g id="${id}">` }; };
+  for (const r of prog.rungs) {
+    if (r.comment) { parts.push(`<text x="${LX + 4}" y="${y + 13}" class="stmt">* ${esc(r.comment)}</text>`); y += 20; }
+    const sz = sizeOf(r.cond), rows = Math.max(sz.h, r.outs.length), top = y;
+    const xOf = c => LX + c * CW, yOf = rr => top + rr * RH + 26;
+    parts.push(`<text x="4" y="${yOf(0) + 4}" class="step">${r.line}</text>`);
+    const drawNode = (n, col, row) => {
+      const s = sizeOf(n);
+      if (n.t === 'c') {
+        const x1 = xOf(col), x2 = xOf(col + n.w), yy = yOf(row), cx = (x1 + x2) / 2;
+        const g = G0(); let inner = '';
+        if (n.cmp) {
+          const lbl = `${n.cmp} ${n.a.raw} ${n.b.raw}`;
+          inner += `<path d="M${x1} ${yy}H${x1 + 6}M${x2 - 6} ${yy}H${x2}" class="w"/>`;
+          inner += `<rect x="${x1 + 6}" y="${yy - 11}" width="${x2 - x1 - 12}" height="22" class="hl"/>`;
+          inner += `<path d="M${x1 + 10} ${yy - 11}h-4v22h4M${x2 - 10} ${yy - 11}h4v22h-4" class="w2"/>`;
+          inner += `<text x="${cx}" y="${yy + 4}" text-anchor="middle" class="dev">${esc(lbl)}</text>`;
+          const vEl = 'v' + g.id;
+          inner += `<text x="${cx}" y="${yy + 23}" text-anchor="middle" class="val" id="${vEl}"></text>`;
+          ladRefs.push({ g: g.id, node: n, val: vEl, fn: () => [n.a, n.b].filter(a => a.k === 'dev').map(a => `${a.raw}=${rdWord(a)}`).join(' ') });
+        } else {
+          inner += `<path d="M${x1} ${yy}H${cx - 6}M${cx + 6} ${yy}H${x2}" class="w"/>`;
+          inner += `<rect x="${cx - 10}" y="${yy - 11}" width="20" height="22" class="hl"/>`;
+          inner += `<path d="M${cx - 6} ${yy - 10}V${yy + 10}M${cx + 6} ${yy - 10}V${yy + 10}" class="w2"/>`;
+          if (n.mode === 'i') inner += `<path d="M${cx - 6} ${yy + 9}L${cx + 6} ${yy - 9}" class="w2"/>`;
+          if (n.mode === 'p' || n.mode === 'f') inner += `<text x="${cx}" y="${yy + 4}" text-anchor="middle" class="dev">${n.mode === 'p' ? '↑' : '↓'}</text>`;
+          inner += `<text x="${cx}" y="${yy - 15}" text-anchor="middle" class="dev">${esc(n.a.raw)}</text>`;
+          ladRefs.push({ g: g.id, node: n });
+        }
+        parts.push(g.open + inner + '</g>');
+        return;
+      }
+      if (n.t === 's') { let c = col; for (const it of n.items) { drawNode(it, c, row); c += sizeOf(it).w; } return; }
+      let rr = row; const rowsAt = [];
+      for (const it of n.items) {
+        const is = sizeOf(it);
+        drawNode(it, col, rr);
+        if (is.w < s.w) parts.push(`<path d="M${xOf(col + is.w)} ${yOf(rr)}H${xOf(col + s.w)}" class="w"/>`);
+        rowsAt.push(rr); rr += is.h;
+      }
+      const last = rowsAt[rowsAt.length - 1];
+      parts.push(`<path d="M${xOf(col)} ${yOf(row)}V${yOf(last)}M${xOf(col + s.w)} ${yOf(row)}V${yOf(last)}" class="w"/>`);
+    };
+    drawNode(r.cond, 0, 0);
+    parts.push(`<path d="M${xOf(sz.w)} ${yOf(0)}H${busX}" class="w"/>`);
+    if (r.outs.length > 1) parts.push(`<path d="M${busX} ${yOf(0)}V${yOf(r.outs.length - 1)}" class="w"/>`);
+    r.outs.forEach((o, i) => {
+      const yy = yOf(i), g = G0(); let inner = `<path d="M${busX} ${yy}H${outX}" class="w"/>`;
+      const vEl = 'v' + g.id;
+      if (o.kind === 'out' || o.kind === 'tc') {
+        const cx = railR - 40;
+        inner += `<path d="M${outX} ${yy}H${cx - 12}M${cx + 12} ${yy}H${railR}" class="w"/>`;
+        inner += `<ellipse cx="${cx}" cy="${yy}" rx="13" ry="11" class="hl"/>`;
+        inner += `<path d="M${cx - 8} ${yy - 10}Q${cx - 14} ${yy} ${cx - 8} ${yy + 10}M${cx + 8} ${yy - 10}Q${cx + 14} ${yy} ${cx + 8} ${yy + 10}" class="w2"/>`;
+        inner += `<text x="${cx}" y="${yy - 15}" text-anchor="middle" class="dev">${esc(o.args[0].raw)}${o.kind === 'tc' ? ' ' + esc(o.args[1].raw) : ''}</text>`;
+        if (o.kind === 'tc') inner += `<text x="${cx}" y="${yy + 24}" text-anchor="middle" class="val" id="${vEl}"></text>`;
+        ladRefs.push({ g: g.id, out: o, coil: true, val: o.kind === 'tc' ? vEl : null, fn: () => `現在値 ${rdWord(o.args[0])}` });
+      } else {
+        inner += `<rect x="${outX}" y="${yy - 12}" width="${railR - outX}" height="24" class="box"/>`;
+        inner += `<text x="${outX + 8}" y="${yy + 4}" class="btxt">${esc(o.label)}</text>`;
+        inner += `<text x="${outX + 8}" y="${yy + 25}" class="val" id="${vEl}"></text>`;
+        let fn = null;
+        if (o.kind === 'mov' || o.kind === 'inc' || o.kind === 'arith' || o.kind === 'rstw') { const d = o.args[o.args.length - 1]; fn = () => `${d.raw}=${rdWord(d)}`; }
+        ladRefs.push({ g: g.id, out: o, val: fn ? vEl : null, fn });
+      }
+      parts.push(g.open + inner + '</g>');
+    });
+    y = top + rows * RH + 8;
+  }
+  if (!prog.rungs.length) { parts.push(`<text x="${LX + 8}" y="${y + 20}" class="stmt">回路がありません。右のニーモニックを書いて書き込みます。</text>`); y += 40; }
+  parts.push(`<text x="${LX + 8}" y="${y + 18}" class="step">END</text>`);
+  const H = y + 30;
+  parts.unshift(`<path d="M${LX} 4V${H - 18}M${railR} 4V${H - 18}" class="rail"/>`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = parts.join('');
+  for (const r of ladRefs) { r.el = document.getElementById(r.g); r.vel = r.val ? document.getElementById(r.val) : null; r.last = null; r.lastV = null; }
+}
+function updLadder() {
+  for (const r of ladRefs) {
+    const on = r.node ? r.node.on : r.coil ? rdBit(r.out.args[0]) : r.out.on;
+    if (on !== r.last) { r.el.classList.toggle('on', on); r.last = on; }
+    if (r.vel) { const v = r.fn(); if (v !== r.lastV) { r.vel.textContent = v; r.lastV = v; } }
+  }
+}
+
+// ---------- 機械の図 ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let colors = {};
+function readColors() { for (const k of ['ink', 'muted', 'line', 'grid', 'cmd', 'fb', 'on', 'ok', 'warn', 'crit', 'metal', 'panel', 'bg', 'chip']) colors[k] = css('--' + k); colors.data = css('--font-data'); colors.body = css('--font-body'); }
+function drawMach() {
+  const cv = $('mach'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 200;
+  if (!W) return;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = H * dpr; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const C = colors, x0 = 84, x1 = W - 14, mm0 = -40, mm1 = 445;
+  const X = mm => x0 + (mm - mm0) / (mm1 - mm0) * (x1 - x0);
+  const pos = mot.pos(), yS = 112;
+  ctx.fillStyle = C.chip; ctx.fillRect(X(mm0), yS + 16, X(mm1) - X(mm0), 10);
+  ctx.fillStyle = C.metal; ctx.fillRect(X(MECH.endLo) - 6, yS - 26, 6, 52); ctx.fillRect(X(MECH.endHi), yS - 26, 6, 52);
+  ctx.strokeStyle = C.metal; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(x0 - 6, yS); ctx.lineTo(X(MECH.endHi), yS); ctx.stroke();
+  ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ctx.beginPath();
+  const pitch = 9, ph = ((mot.th / TWO_PI) % 1 + 1) % 1 * pitch;
+  for (let x = x0 - 6 + ph; x < X(MECH.endHi); x += pitch) { ctx.moveTo(x, yS - 4); ctx.lineTo(x + 4, yS + 4); }
+  ctx.stroke();
+  ctx.fillStyle = C.ink; ctx.fillRect(10, yS - 26, 64, 52);
+  ctx.fillStyle = C.muted; ctx.font = '600 11px ' + C.body; ctx.textAlign = 'center'; ctx.fillText('モータ', 42, yS - 32);
+  ctx.strokeStyle = C.panel; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(42, yS, 16, 0, TWO_PI); ctx.stroke();
+  const a = -Math.PI / 2 + mot.th; ctx.beginPath(); ctx.moveTo(42, yS); ctx.lineTo(42 + Math.cos(a) * 14, yS + Math.sin(a) * 14); ctx.stroke();
+  const sensor = (mm, label, active, col) => {
+    const x = X(mm);
+    ctx.fillStyle = active ? col : C.chip; ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, yS + 30); ctx.lineTo(x - 7, yS + 44); ctx.lineTo(x + 7, yS + 44); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = active ? col : C.muted; ctx.font = '600 11px ' + C.data; ctx.textAlign = 'center'; ctx.fillText(label, x, yS + 58);
+  };
+  sensor(MECH.lsn, 'LSN', !mach.lsnOK, C.crit);
+  sensor(MECH.lsp, 'LSP', !mach.lspOK, C.crit);
+  ctx.fillStyle = mach.dog ? C.on : C.grid; ctx.globalAlpha = mach.dog ? .5 : 1;
+  ctx.fillRect(X(MECH.dogLo), yS + 30, X(MECH.dogHi) - X(MECH.dogLo), 10); ctx.globalAlpha = 1;
+  ctx.fillStyle = mach.dog ? C.on : C.muted; ctx.font = '600 11px ' + C.data; ctx.fillText('DOG', X((MECH.dogLo + MECH.dogHi) / 2), yS + 58);
+  ctx.fillStyle = C.muted; ctx.font = '10px ' + C.data; ctx.textAlign = 'center';
+  for (let mm = 0; mm <= 400; mm += 50) { const x = X(mm); ctx.fillRect(x, yS + 26, 1, 4); ctx.fillText(String(mm), x, yS + 80); }
+  ctx.textAlign = 'right'; ctx.fillText('目盛: mm（機械座標）', x1, 12);
+  const xo = X(drv.offset);
+  ctx.strokeStyle = C.cmd; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xo, 18); ctx.lineTo(xo, yS + 24); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = C.cmd; ctx.textAlign = xo > W - 160 ? 'right' : 'left'; ctx.font = '600 11px ' + C.body;
+  ctx.fillText(drv.homeDone || drv.offset !== MECH.start ? '位置実際値 0（原点）' : '位置実際値 0（電源投入位置）', xo + (xo > W - 160 ? -4 : 4), 28);
+  const xc = X(drv.cmd);
+  ctx.fillStyle = C.cmd; ctx.beginPath(); ctx.moveTo(xc, yS - 46); ctx.lineTo(xc - 6, yS - 56); ctx.lineTo(xc + 6, yS - 56); ctx.closePath(); ctx.fill();
+  const xt = X(pos), tw = 58;
+  ctx.fillStyle = mot.crash ? C.crit : C.fb; ctx.fillRect(xt - tw / 2, yS - 40, tw, 30);
+  ctx.fillStyle = C.ink; ctx.fillRect(xt - 12, yS - 10, 24, 20);
+  ctx.fillStyle = '#fff'; ctx.font = '600 11px ' + C.body; ctx.textAlign = 'center'; ctx.fillText('テーブル', xt, yS - 21);
+}
+
+// ---------- トレース ----------
+function drawTrace() {
+  const cv = $('trace'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth;
+  if (!W) return;
+  const PH = [['速度', 'mm/s'], ['偏差', 'µm'], ['トルク', '%']], ph = 86, bh = 18, top = 6, L = 100, R = 10;
+  const H = top + PH.length * ph + traceOps.length * bh + 22;
+  cv.style.height = H + 'px';
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const C = colors, n = tr.n, xw = W - L - R;
+  const idx = k => (tr.i - n + k + TN) % TN;
+  const xOf = k => L + xw - (n - 1 - k) / (TN - 1) * xw;
+  const series = [[[tr.spdC, C.cmd, true], [tr.spdA, C.fb]], [[tr.dev, C.fb]], [[tr.trq, C.fb]]];
+  series.forEach((ss, p) => {
+    const y0 = top + p * ph, y1 = y0 + ph - 14;
+    let lo = Infinity, hi = -Infinity;
+    for (const [arr] of ss) for (let k = 0; k < n; k++) { const v = arr[idx(k)]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    const minSpan = [20, 20, 40][p];
+    if (!isFinite(lo)) { lo = -minSpan / 2; hi = minSpan / 2; }
+    const span = Math.max(hi - lo, minSpan), mid = (hi + lo) / 2; lo = mid - span * .55; hi = mid + span * .55;
+    const yOf = v => y1 - (v - lo) / (hi - lo) * (y1 - y0);
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.strokeRect(L + .5, y0 + .5, xw, y1 - y0);
+    if (lo < 0 && hi > 0) { ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(L, Math.round(yOf(0)) + .5); ctx.lineTo(L + xw, Math.round(yOf(0)) + .5); ctx.stroke(); }
+    ctx.fillStyle = C.ink; ctx.textAlign = 'left'; ctx.font = '600 12px ' + C.body; ctx.fillText(PH[p][0], 4, y0 + 13);
+    ctx.font = '10.5px ' + C.data; ctx.fillStyle = C.muted; ctx.fillText(PH[p][1], 4, y0 + 27);
+    ctx.textAlign = 'right'; ctx.fillText(hi.toFixed(Math.abs(hi) < 10 ? 1 : 0), L - 4, y0 + 10); ctx.fillText(lo.toFixed(Math.abs(lo) < 10 ? 1 : 0), L - 4, y1);
+    ctx.save(); ctx.beginPath(); ctx.rect(L, y0, xw, y1 - y0); ctx.clip();
+    for (const [arr, col, dash] of ss) {
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.setLineDash(dash ? [5, 4] : []); ctx.beginPath();
+      const per = Math.max(1, Math.floor(n / xw));
+      for (let k = 0; k < n; k += per) {
+        let mn = Infinity, mx = -Infinity; for (let j = k; j < Math.min(n, k + per); j++) { const v = arr[idx(j)]; if (v < mn) mn = v; if (v > mx) mx = v; }
+        const x = xOf(k); if (k === 0) ctx.moveTo(x, yOf(mn)); else ctx.lineTo(x, yOf(mn)); if (mx !== mn) ctx.lineTo(x, yOf(mx));
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]); ctx.restore();
+    if (p === 0 && n) { ctx.font = '10.5px ' + C.data; ctx.fillStyle = C.fb; ctx.textAlign = 'right'; ctx.fillText(`実 ${tr.spdA[idx(n - 1)].toFixed(1)}`, L + xw - 4, y0 + 12); ctx.fillStyle = C.cmd; ctx.fillText(`指令 ${tr.spdC[idx(n - 1)].toFixed(1)}`, L + xw - 74, y0 + 12); }
+  });
+  const by0 = top + PH.length * ph;
+  traceOps.forEach((op, b) => {
+    const y0 = by0 + b * bh, arr = tr.bits[b];
+    ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.font = '10.5px ' + C.data; ctx.fillText(op.raw, 4, y0 + 12);
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(L, y0 + bh - .5); ctx.lineTo(L + xw, y0 + bh - .5); ctx.stroke();
+    ctx.fillStyle = C.on;
+    let k = 0;
+    while (k < n) {
+      if (arr[idx(k)]) { const s = k; while (k < n && arr[idx(k)]) k++; const xa = xOf(s), xb = Math.max(xa + 1, xOf(k - 1)); ctx.fillRect(xa, y0 + 4, xb - xa, bh - 8); } else k++;
+    }
+  });
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center'; ctx.font = '10.5px ' + C.data;
+  const yA = by0 + traceOps.length * bh + 14;
+  for (let s = 0; s <= 4; s++) ctx.fillText(s === 0 ? '0 s' : `-${s} s`, L + xw - s / 4 * xw, yA);
+}
+function setTrace() {
+  traceOps = $('traceDevs').value.toUpperCase().split(/[,\s、]+/).filter(Boolean).map(parseOperand).filter(a => a && a.k === 'dev' && isBitOp(a)).slice(0, 10);
+  tr.bits = traceOps.map(() => new Uint8Array(TN));
+}
+$('traceDevs').addEventListener('change', setTrace);
+
+// ---------- デバイスモニタ・表 ----------
+function devList() {
+  const set = new Map();
+  const add = a => { if (a && a.k === 'dev') { const key = a.bit != null ? a.raw.replace(/\.[0-9A-F]$/, '') : a.raw; if (!set.has(key)) set.set(key, { ...a, bit: null, raw: key }); } };
+  const walk = n => { if (n.t === 'c') { add(n.a); add(n.b); } else n.items.forEach(walk); };
+  for (const r of prog.rungs) { walk(r.cond); for (const o of r.outs) o.args.forEach(add); }
+  for (const n of [RWR, RWR + 1, RWR + 4, RWR + 8, RWW, RWW + 1, RWW + 2]) add({ k: 'dev', t: 'D', n, raw: 'D' + n });
+  const order = { X: 0, Y: 1, M: 2, T: 3, C: 4, D: 5, SM: 6 };
+  return [...set.values()].sort((a, b) => (order[a.t] - order[b.t]) || (a.n - b.n));
+}
+let monRows = [];
+function buildDevMon() {
+  const list = devList();
+  $('devmon').innerHTML = list.map((a, i) => {
+    const cm = RCOM[a.raw] || IOC[a.raw] || (a.t === 'T' ? 'タイマ（100 ms）' : a.t === 'C' ? 'カウンタ' : '');
+    return `<tr><td class="d">${esc(a.raw)}</td><td class="n" id="dm${i}"></td><td>${esc(cm)}</td></tr>`;
+  }).join('');
+  monRows = list.map((a, i) => ({ a, el: document.getElementById('dm' + i), last: null }));
+}
+const hex = v => 'H' + (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+function updDevMon() {
+  for (const r of monRows) {
+    const a = r.a; let v, on = false;
+    if (['X', 'Y', 'M', 'SM'].includes(a.t)) { on = rdBit(a); v = on ? 'ON' : 'OFF'; }
+    else if (a.t === 'T' || a.t === 'C') { on = rdBit(a); v = `${rdWord(a)}${on ? '  ON' : ''}`; }
+    else { const w = rdWord(a); v = (a.n === RWR || a.n === RWW) ? `${hex(w)}` : String(w); }
+    if (v !== r.last) { r.el.textContent = v; r.el.classList.toggle('on', on); r.last = v; }
+  }
+}
+function buildRmap() {
+  $('rmap').innerHTML = RMAP.map(([d, l, nm, ds]) => `<tr><td class="d">D${d}${l.includes('-') ? '〜' + (d + 1) : ''}</td><td class="d">${l}</td><td class="wrap"><b>${esc(nm)}</b><br><span class="hint">${esc(ds)}</span></td></tr>`).join('');
+}
+function buildPtab() {
+  $('ptab').innerHTML = ptab.map((d, i) => `<tr>
+    <td class="d">${i + 1}</td>
+    ${['pos', 'spd', 'acc', 'dec', 'dwell'].map(k => `<td><input type="number" data-i="${i}" data-k="${k}" value="${d[k]}" step="${k === 'pos' ? 0.001 : k === 'spd' ? 50 : 10}" aria-label="No.${i + 1} ${k}"></td>`).join('')}
+    <td><select data-i="${i}" data-k="aux" aria-label="No.${i + 1} 補助機能">${AUX.map((t, v) => `<option value="${v}"${d.aux === v ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
+  </tr>`).join('');
+}
+$('ptab').addEventListener('input', e => {
+  const t = e.target, i = +t.dataset.i, k = t.dataset.k; if (!ptab[i]) return;
+  ptab[i][k] = parseFloat(t.value) || 0;
+});
+for (const k of ['oprV', 'creep', 'jogAcc', 'link', 'level']) $('p-' + k).addEventListener('input', e => {
+  const v = parseFloat(e.target.value); if (!isFinite(v) || v <= 0) return;
+  prm[k] = k === 'level' ? Math.min(40, Math.max(1, v)) : k === 'link' ? Math.min(50, Math.max(1, Math.round(v))) : v;
+});
+
+// ---------- 表示の更新 ----------
+const fmt = (v, d = 0) => v.toLocaleString('ja-JP', { minimumFractionDigits: d, maximumFractionDigits: d });
+function updPanel() {
+  for (const p of PANEL) p.el.classList.toggle('on', panelIn[p.x] === 1);
+  document.querySelectorAll('#lampsY .lamp').forEach(l => l.classList.toggle('lit', S.y[+l.dataset.y] === 1));
+  $('ampDisp').textContent = drv.alarm ? `AL.${drv.alarm}` : drv.warn.startsWith('AL.99') ? 'AL.99' : drv.state === 'OE' ? 'ON' : 'OFF';
+  const mname = { [-101]: 'pt', [-100]: 'jg', 6: 'hm' }[drv.mode] || '?';
+  $('ampState').textContent = `${ST[drv.state]}・モード ${mname}・SW ${hex(drv.status())}`;
+  const L = (id, v) => $(id).classList.toggle('lit', v);
+  L('a-link', plcRun); L('a-dog', mach.dog); L('a-lsp', mach.lspOK); L('a-lsn', mach.lsnOK); L('a-alm', !!drv.alarm);
+  $('r-pos').innerHTML = `${fmt(mot.pos(), 3)}<small>mm</small>`;
+  $('r-pa').innerHTML = `${fmt(Math.round((mot.pos() - drv.offset) * 1000))}<small>µm</small>`;
+  $('r-spd').innerHTML = `${fmt(mot.w / TWO_PI * 60)}<small>r/min</small>`;
+  $('r-dev').innerHTML = `${fmt((mot.thc - mot.th) / TWO_PI * LEAD * 1000, 1)}<small>µm</small>`;
+  $('r-trq').innerHTML = `${fmt(mot.T / MOTOR.Tr * 100)}<small>%</small>`;
+  const msg = mot.crash ? 'メカストッパに当たっています' : drv.alarm ? `AL.${drv.alarm} ${drv.alarmMsg}。異常リセット（コントロールワード b7）で戻す` : drv.warn ? drv.warn : !plcRun ? 'CPU は STOP 中（RWw はすべて 0）' : '';
+  $('machMsg').textContent = msg; $('machMsg').style.color = msg ? colors.crit : '';
+}
+
+let last = performance.now(), acc = 0, frame = 0;
+function loop(now) {
+  const el = Math.min(100, now - last); last = now;
+  acc += el * speed;
+  let n = 0; while (acc >= 1 && n < 150) { scanOnce(); acc -= 1; n++; }
+  if (n >= 150) acc = 0;
+  frame++;
+  drawMach(); updPanel();
+  if (frame % 2 === 0) { updLadder(); drawTrace(); }
+  if (frame % 6 === 0) updDevMon();
+  requestAnimationFrame(loop);
+}
+
+// ---------- 起動 ----------
+readColors();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(readColors);
+
+buildPanel(); buildRmap(); buildPtab(); setTrace();
+let saved = null; try { saved = localStorage.getItem('j5g-src'); } catch (e) {}
+src.value = SAMPLES.s1; updGutter(); writeProgram();
+if (saved && saved !== SAMPLES.s1) { src.value = saved; updGutter(); setState(); showMsgs(parseProgram(saved)); }
+window.__j5 = { S, drv, mot, mach, panelIn, parseProgram, get prog() { return prog; }, scanOnce };
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
