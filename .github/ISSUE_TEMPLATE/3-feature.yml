@@ -1,0 +1,45 @@
+# 作成: 2026-10-23 / 目的: 機能の要望を出してもらう Issue フォーム
+name: 要望
+description: 足してほしい機能、学習に役立ちそうな改善のアイデア
+title: "[要望] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: want
+    attributes:
+      label: やりたいこと
+      description: 機能そのものより、「何を学びたいか・何に困っているか」を書いてもらえると助かります
+      placeholder: 例）原点復帰の方式（ドグ式以外）の違いを試したい
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: こうなるとよい（案）
+      placeholder: 例）原点復帰の方式を選べるようにして、それぞれのタイミングチャートを見られる
+  - type: dropdown
+    id: area
+    attributes:
+      label: 関係する部分
+      multiple: true
+      options:
+        - 操作盤
+        - 機械・サーボのモデル
+        - ラダー（命令・表示・編集）
+        - 構成ブロック図
+        - 波形（タイミングチャート・トレース）
+        - サンプル・説明
+        - 画面の配置・操作
+        - その他
+  - type: textarea
+    id: ref
+    attributes:
+      label: 参考（実機やマニュアルの機能など）
+      description: 実機にある機能なら、マニュアル名とページを書いてもらえると作りやすくなります
+  - type: checkboxes
+    id: help
+    attributes:
+      label: 手伝い
+      options:
+        - label: 実装やレビューを手伝える
+        - label: 実機で動きを確かめられる

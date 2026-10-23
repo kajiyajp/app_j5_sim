@@ -1,0 +1,60 @@
+# 作成: 2026-10-23 / 目的: シミュレータの不具合（表示崩れ・動かない・エラーなど）を報告してもらう Issue フォーム
+name: 不具合
+description: 画面が崩れる、ボタンが効かない、ラダーが思った通りに動かない、など
+title: "[不具合] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        実機との違い（割り付けや動きが実際と違う）は「実機確認」フォームでお願いします。
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      placeholder: 例）セレクタ方式で 3 を選んで起動しても、No.1 へ動く
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現する手順
+      placeholder: |
+        1. 上のバーで「セレクタ」を選ぶ
+        2. デジタルスイッチを 3 にする
+        3. 原点復帰してから起動（X0）を押す
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 本来はどうなるはずか
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: どこで開いたか
+      options:
+        - 公開ページ（kajiyajp.github.io）
+        - ダウンロードした index.html
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: ブラウザと OS
+      placeholder: 例）Chrome 130 / Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: ladder
+    attributes:
+      label: 使ったラダー（自作の場合）
+      description: ニーモニックを貼り付けてください
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: スクリーンショット・そのほか
+      description: 画像はドラッグして貼り付けられます

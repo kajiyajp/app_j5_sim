@@ -1,0 +1,67 @@
+# 作成: 2026-10-23 / 目的: 実機・マニュアルとシミュレータの違いを報告してもらう Issue フォーム
+name: 実機確認（実機・マニュアルとの違い）
+description: 割り付け・状態遷移・パラメータなどが、実機やマニュアルと違うところを知らせる
+title: "[実機確認] "
+labels: ["hardware-check"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        作者は実機を使ったことがないため、実機やマニュアルをご存じの方の確認が、いちばん助かります。
+        分かる範囲で大丈夫です。マニュアルの文章や図は貼り付けず、ページ番号と要約で書いてください。
+  - type: dropdown
+    id: area
+    attributes:
+      label: どこについてか
+      options:
+        - RWw・RWr とオブジェクトの割り付け
+        - コントロールワード・ステータスワード（CiA402 の状態遷移）
+        - 制御モード（pt・jg・hm）
+        - ポイントテーブル
+        - 原点復帰
+        - JOG
+        - オーバーライド
+        - 操作盤の入出力（X・Y、デジタルスイッチ・ロータリースイッチ）
+        - パラメータ・ゲイン・機械モデル
+        - アラーム・警告
+        - ラダー命令（ニーモニック）
+        - その他
+    validations:
+      required: true
+  - type: textarea
+    id: sim
+    attributes:
+      label: シミュレータではどうなっているか
+      description: 画面・割り付け表・サンプルのラダーなど、どこを見たか
+      placeholder: 例）割り付け表で RWw3 がオーバーライドになっている
+    validations:
+      required: true
+  - type: textarea
+    id: real
+    attributes:
+      label: 実際はどうか
+      description: 実機での動き、またはマニュアルの記載（自分の言葉で）
+      placeholder: 例）MR-J5-G では、オーバーライドは別のオブジェクトで指定する
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: 根拠
+      description: マニュアル名・版・ページ、または実機で確かめた方法
+      placeholder: 例）MR-J5-G ユーザーズマニュアル（通信機能編）○版 p.123
+  - type: input
+    id: model
+    attributes:
+      label: 確かめた機種・バージョン
+      placeholder: 例）FX5UC-64MT/D ファームウェア 1.xxx、MR-J5-40G ソフトウェア B0
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: 確かさ
+      options:
+        - 実機で確かめた
+        - マニュアルで確かめた
+        - 記憶・経験から（未確認）
+    validations:
+      required: true

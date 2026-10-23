@@ -1,0 +1,9 @@
+# 作成: 2026-10-23 / 目的: Issue を立てる画面の設定（フォームを使わない白紙の Issue も許可する）
+blank_issues_enabled: true
+contact_links:
+  - name: 公開ページで試す
+    url: https://kajiyajp.github.io/app_j5_sim/
+    about: Issue を立てる前に、最新版の動きを確かめられます
+  - name: 参加のしかた（CONTRIBUTING.md）
+    url: https://github.com/kajiyajp/app_j5_sim/blob/main/CONTRIBUTING.md
+    about: 実機確認の報告で書いてほしいこと、プルリクエストの手順
