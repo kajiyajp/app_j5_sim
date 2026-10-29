@@ -344,6 +344,10 @@ details summary { cursor: pointer; font-weight: 600; }
     <select id="speed"><option value="1">実時間</option><option value="0.5">1/2</option><option value="0.2">1/5</option><option value="0.05">1/20</option></select>
     <button type="button" id="resetLayout">レイアウトを戻す</button>
     <button type="button" id="power">電源再投入</button>
+    <div class="seg" role="radiogroup" aria-label="表示言語 / Language">
+      <input type="radio" name="lang" id="lang-ja" value="ja"><label for="lang-ja">日本語</label>
+      <input type="radio" name="lang" id="lang-en" value="en"><label for="lang-en">EN</label>
+    </div>
   </div>
 </div>
 <div class="wrap toprow">
@@ -712,6 +716,289 @@ details summary { cursor: pointer; font-weight: 600; }
 'use strict';
 const $ = id => document.getElementById(id);
 const TWO_PI = Math.PI * 2;
+
+// ---------- 表示言語（日本語・英語）。URL の ?lang=、保存した設定、ブラウザの言語の順で決める ----------
+const LANG = (() => {
+  const q = new URLSearchParams(location.search).get('lang');
+  if (q === 'ja' || q === 'en') return q;
+  try { const s = localStorage.getItem('j5g-lang'); if (s === 'ja' || s === 'en') return s; } catch (e) {}
+  return /^ja\b/i.test(navigator.language || 'ja') ? 'ja' : 'en';
+})();
+const EN_MODE = LANG === 'en';
+// 日本語と英語を並べて書き、今の言語のほうを返す
+const TX = (ja, en) => EN_MODE ? en : ja;
+// HTML に直接書いた文言とサンプルのコメントの英訳（キーは日本語の文言そのもの）
+const EN = {
+  // 上のバー・説明
+  '【非公式】J5 サーボ制御シミュレータ': '[Unofficial] J5 Servo Control Simulator',
+  '閉じる': 'Close',
+  'CPU の RUN/STOP': 'CPU RUN/STOP',
+  '変換＋書込み（F4）': 'Convert + Write (F4)',
+  '書込み済み': 'Written',
+  'クリックで説明を表示': 'Click for a description',
+  'No. 指定': 'No. select',
+  'ポイントテーブル No. の指定方式': 'How the point table No. is chosen',
+  'ラダーの MOV K1 D2002 で No. を決める': 'The ladder sets No. with MOV K1 D2002',
+  'ラダー': 'Ladder',
+  '操作盤のデジタルスイッチ（X10〜X13）で No. を選ぶ': 'Choose No. with the digital switch on the panel (X10–X13)',
+  'セレクタ': 'Selector',
+  'オーバーライド': 'Override',
+  '速度オーバーライド': 'Speed override',
+  '速度は 100 % のまま': 'Speed stays at 100 %',
+  '操作盤のロータリースイッチ（X14〜X17）で 50〜150 %': '50–150 % with the rotary switch on the panel (X14–X17)',
+  '実行速度': 'Sim speed',
+  '実時間': 'Real time',
+  'レイアウトを戻す': 'Reset layout',
+  '電源再投入': 'Power cycle',
+  // 機械・操作盤
+  '機械': 'Machine',
+  '機械（ボールねじ リード 10 mm、指令単位 1 µm）': 'Machine (ball screw, lead 10 mm, command unit 1 µm)',
+  'ボールねじ軸の図。テーブル位置、近点ドグ、ストロークエンドを表示': 'Ball screw axis showing the table position, near-point dog and stroke ends',
+  'テーブル位置（機械）': 'Table position (machine)',
+  '位置実際値 6064h': 'Position actual 6064h',
+  '速度': 'Speed',
+  '偏差（指令−実）': 'Deviation (cmd − actual)',
+  'トルク': 'Torque',
+  '操作盤': 'Operation panel',
+  '操作盤（X・Y）': 'Operation panel (X/Y)',
+  '数字を 1 増やす': 'Increase by 1',
+  'デジタルスイッチの値': 'Digital switch value',
+  '数字を 1 減らす': 'Decrease by 1',
+  'No. 選択 デジタルスイッチ（TOSOKU 想定・BCD）': 'No. select digital switch (TOSOKU-style, BCD)',
+  '1〜4 を選んで起動（X0）。0・5〜9 では始動しない': 'Pick 1–4, then Start (X0). 0 and 5–9 do not start',
+  'オーバーライドのロータリースイッチ（クリックで右へ 1 つ、矢印キーでも回る）': 'Override rotary switch (click to turn one step right; arrow keys also work)',
+  'オーバーライド ロータリースイッチ（TOSOKU 想定・16 進）': 'Override rotary switch (TOSOKU-style, hex)',
+  '左へ 1 つ回す': 'Turn one step left',
+  '右へ 1 つ回す': 'Turn one step right',
+  '0〜A で 50〜150 %（10 % 刻み）。B〜F は 150 %': '0–A gives 50–150 % (10 % steps). B–F stay at 150 %',
+  'MR-J5-40G 表示': 'MR-J5-40G display',
+  'サーボ異常を起こす': 'Cause a servo fault',
+  'LSP・LSN・DOG はサーボアンプに配線（PLC の X ではない）': 'LSP, LSN and DOG are wired to the servo amplifier (not to PLC X inputs)',
+  'LSP・LSN・DOG はアンプに配線': 'LSP/LSN/DOG are wired to the amp',
+  // 構成ブロック図
+  '構成ブロック図': 'System block diagram',
+  '構成ブロック図のペインを移動（矢印キーでも動く）': 'Move the block diagram pane (arrow keys also work)',
+  '信号が流れている経路は青い破線が動く': 'Moving blue dashes show where signals flow',
+  '操作盤のスイッチがラダーを動かし、ラダーが RWw（D2000〜）に書いた値がリンクで MR-J5-G に届き、状態遷移・制御モード・ポイントテーブルから位置指令を作ってモータを動かす。サーボの状態は RWr（D1000〜）で PLC に戻る。': 'Panel switches drive the ladder. Values the ladder writes to RWw (D2000–) reach the MR-J5-G over the link, which builds a position command from its state machine, mode of operation and point table, and turns the motor. The servo status returns to the PLC through RWr (D1000–).',
+  '操作盤（PLC 入力 X）': 'Panel (PLC inputs X)',
+  'X0 起動': 'X0 Start',
+  'X1 停止': 'X1 Stop',
+  'X2 原点復帰': 'X2 Home',
+  'X5 サーボ ON': 'X5 Servo ON',
+  'X6 異常リセット': 'X6 Fault reset',
+  'X7 非常停止': 'X7 E-stop',
+  'ランプ（PLC 出力 Y）': 'Lamps (PLC outputs Y)',
+  'Y0 運転中': 'Y0 Running',
+  'Y1 原点復帰完了': 'Y1 Homing done',
+  'Y2 異常': 'Y2 Fault',
+  'Y3 位置決め完了': 'Y3 Positioning done',
+  'FX5UC-64MT/D（スキャン 1 ms）': 'FX5UC-64MT/D (scan 1 ms)',
+  'ラダー（プログラム）': 'Ladder (program)',
+  'M100 サーボ ON 要求': 'M100 Servo ON request',
+  'M10 原点復帰中': 'M10 Homing',
+  'M20 JOG 中': 'M20 JOG active',
+  'M30 位置決め始動': 'M30 Positioning start',
+  'M40 原点復帰済み': 'M40 Homed',
+  'RWw → D2000〜（PLC が書く）': 'RWw → D2000– (PLC writes)',
+  'D2000 コントロールワード': 'D2000 Control word',
+  'D2001 制御モード': 'D2001 Mode of operation',
+  'D2002 ポイントテーブル No.': 'D2002 Point table No.',
+  'RWr ← D1000〜（PLC が読む）': 'RWr ← D1000– (PLC reads)',
+  'D1000 ステータスワード': 'D1000 Status word',
+  'D1001 制御モード表示': 'D1001 Mode display',
+  'D1004 位置実際値 µm': 'D1004 Position actual µm',
+  '内蔵 Ethernet': 'Built-in Ethernet',
+  '周期 5 ms': 'Period 5 ms',
+  '局番 1': 'Station 1',
+  'MR-J5-40G（位置決めモード）': 'MR-J5-40G (positioning mode)',
+  '6040h → CiA402 状態': '6040h → CiA402 state',
+  '6060h → 制御モード': '6060h → Mode of operation',
+  'ポイントテーブル（No. で選ぶ）': 'Point table (chosen by No.)',
+  '位置指令の生成': 'Position command generator',
+  '位置・速度・電流ループ': 'Position/speed/current loops',
+  'センサ（アンプに配線）': 'Sensors (on amp)',
+  'DOG 近点ドグ': 'DOG Near-point dog',
+  'LSP 正転側': 'LSP Forward end',
+  'LSN 逆転側': 'LSN Reverse end',
+  'モータ＋ボールねじ': 'Motor + ball screw',
+  'リード 10 mm': 'Lead 10 mm',
+  '入力': 'Input',
+  'MOV・OUT': 'MOV/OUT',
+  '接点で読む': 'Read as contacts',
+  '電流': 'Current',
+  'エンコーダ（位置・速度）': 'Encoder (position/speed)',
+  '原点・リミット': 'Home/limits',
+  '通過で検出': 'On pass',
+  '操作盤のスイッチでラダーが動き、ラダーが D2000〜（RWw）に書いたコントロールワード・制御モード・ポイントテーブル No. がリンク周期ごとに MR-J5-G に届きます。サーボは状態遷移とモードを確かめ、選ばれた No. の位置・速度で位置指令を作ってモータを回します。結果のステータスワードと位置は D1000〜（RWr）で PLC に戻り、ラダーの接点になります。': 'Panel switches drive the ladder. The control word, mode of operation and point table No. that the ladder writes to D2000– (RWw) reach the MR-J5-G every link period. The servo checks its state and mode, builds a position command from the position and speed of the selected No., and turns the motor. The resulting status word and position return to the PLC through D1000– (RWr) and become ladder contacts.',
+  // ラダー
+  'ラダーのペインを移動（矢印キーでも動く）': 'Move the ladder pane (arrow keys also work)',
+  'ラダー（モニタ中）': 'Ladder (monitoring)',
+  '青い接点・コイルが導通中。クリックで同じデバイスの次の場所へ・ダブルクリックでコメント編集・Ctrl＋クリックで割り付け': 'Blue contacts and coils are conducting. Click: next use of the device · Double-click: edit comment · Ctrl+click: assignment',
+  'コメント表示': 'Show comments',
+  'ラダー図の表示倍率': 'Ladder zoom',
+  '縮小': 'Zoom out',
+  '100 % に戻す': 'Reset to 100 %',
+  '拡大': 'Zoom in',
+  // 編集と資料
+  '編集と資料': 'Edit & reference',
+  '編集と資料のペインを移動（矢印キーでも動く）': 'Move the edit & reference pane (arrow keys also work)',
+  'ニーモニック': 'Mnemonic',
+  'ポイントテーブル': 'Point table',
+  '割り付け': 'Assignment',
+  '動かし方': 'How to use',
+  'デバイスコメント': 'Device comments',
+  '使える命令': 'Instructions',
+  'デバイスモニタ': 'Device monitor',
+  'プログラムで使うデバイス': 'Devices used by the program',
+  'デバイス': 'Device',
+  '値': 'Value',
+  'コメント': 'Comment',
+  'サンプル': 'Sample',
+  'サンプル 1: 手動操作（サーボ ON・JOG・原点復帰・No.1）': 'Sample 1: Manual (servo ON, JOG, homing, No.1)',
+  'サンプル 2: 自動往復（No.1 ↔ No.2）': 'Sample 2: Auto shuttle (No.1 ↔ No.2)',
+  'サンプル 3: 誤り例（いきなり 15 を書く）': 'Sample 3: Mistake (writes 15 straight away)',
+  'サンプル 4: セレクタ方式（デジタルスイッチで No.1〜4）': 'Sample 4: Selector (digital switch picks No.1–4)',
+  'サンプル 5: オーバーライド（ラダー方式 ＋ ロータリースイッチ）': 'Sample 5: Override (ladder No. + rotary switch)',
+  'サンプル 6: オーバーライド（セレクタ方式 ＋ ロータリースイッチ）': 'Sample 6: Override (selector + rotary switch)',
+  '読み込む': 'Load',
+  '命令の挿入': 'Insert instruction',
+  'MR Configurator2 で設定する内容に当たります。変更はすぐ反映します。': 'These correspond to settings made in MR Configurator2. Changes apply immediately.',
+  '位置データ mm': 'Position mm',
+  '回転速度 r/min': 'Speed r/min',
+  '加速時定数 ms': 'Accel ms',
+  '減速時定数 ms': 'Decel ms',
+  'ドウェル ms': 'Dwell ms',
+  '補助機能': 'Aux function',
+  '原点復帰速度 r/min': 'Homing speed r/min',
+  'クリープ速度 r/min': 'Creep speed r/min',
+  'JOG 加減速時定数 ms': 'JOG accel/decel ms',
+  'リンク周期 ms': 'Link period ms',
+  'PA09 応答性（1〜40）': 'PA09 response level (1–40)',
+  '回転速度 600 r/min ＝ 100 mm/s。加減速時定数は 0 から定格 3000 r/min までの時間。補助機能 1・3 は次の No. へ続けて動きます。原点復帰はドグ式・負方向で、ドグ後端（0 mm 側）を原点 0 にします（ゼロ点信号は省略）。': '600 r/min = 100 mm/s. Accel/decel time constants are the time from 0 to the rated 3000 r/min. Aux functions 1 and 3 continue to the next No. Homing is the dog type in the negative direction; the rear end of the dog (0 mm side) becomes home 0 (the Z-phase signal is omitted).',
+  'リンク': 'Link',
+  '内容': 'Description',
+  'GX Works3 の CC-Link IEF Basic 設定で、RWw を D2000〜、RWr を D1000〜 にリフレッシュした想定です（局番 1）。RWw・RWr とオブジェクトの対応、JOG の割り当て（コントロールワード b4/b5）、アラーム番号の形はこのシミュレータでの例です。実機は MR-J5-G のユーザーズマニュアル（CC-Link IE フィールドネットワーク Basic 編）と、サーボ・PLC の設定で必ず確かめてください。': 'Assumes the GX Works3 CC-Link IEF Basic settings refresh RWw to D2000– and RWr to D1000– (station 1). The mapping of RWw/RWr to objects, the JOG assignment (control word b4/b5) and the alarm number format are examples for this simulator. For real equipment, always check the MR-J5-G user\'s manual (CC-Link IE Field Network Basic) and your servo and PLC settings.',
+  'サンプル 1 が書込み済み・RUN で始まります。サーボ ON スイッチ（X5）が ON なので、ステータスワードが 0250h → 0231h → 0233h → 0237h と進み、サーボ ON になります。': 'The simulator starts with sample 1 written and the CPU in RUN. The servo ON switch (X5) is ON, so the status word steps 0250h → 0231h → 0233h → 0237h and the servo turns on.',
+  'JOG+（X3）を押すとモードが jg に切り替わり、押している間だけ動きます。': 'Pressing JOG+ (X3) switches the mode to jg, and the axis moves only while it is held.',
+  '原点復帰（X2）でモードを hm に切り替えて始動します。ドグ後端で止まり、位置実際値が 0 になります。': 'Home (X2) switches the mode to hm and starts homing. The axis stops at the rear end of the dog and the position actual becomes 0.',
+  '起動（X0）でポイントテーブル No.1（300 mm）へ動きます。': 'Start (X0) moves to point table No.1 (300 mm).',
+  '上のバーの「オーバーライド」を ON にすると、操作盤にロータリースイッチ（X14〜X17、16 進）が出ます。0〜A で 50〜150 %、運転中に回してもすぐ速度が変わります（位置決め・JOG・原点復帰のすべて）。': 'Turning "Override" ON in the top bar adds a rotary switch (X14–X17, hex) to the panel. 0–A gives 50–150 %, and turning it while moving changes the speed at once (positioning, JOG and homing).',
+  '上のバーの「No. 指定」を「セレクタ」にすると、操作盤にデジタルスイッチ（X10〜X13、BCD）が出て、サンプル 4 が読み込まれます。スイッチで 1〜4 を選んで起動（X0）すると、その No. へ動きます。': 'Setting "No. select" to "Selector" in the top bar adds a digital switch (X10–X13, BCD) to the panel and loads sample 4. Pick 1–4 with the switch and press Start (X0) to move to that No.',
+  'ニーモニックを書き換えて「変換＋書込み」（F4 か Ctrl+Enter）。RUN 中書込みとして、そのまま動作が変わります。': 'Edit the mnemonics and press "Convert + Write" (F4 or Ctrl+Enter). It is written in RUN, so the behavior changes right away.',
+  'コントロールワードは CiA402 の状態遷移どおりに 6 → 7 → 15 と段階を踏みます。いきなり 15 を書いても ON しません（サンプル 3）。': 'The control word must step 6 → 7 → 15 following the CiA402 state machine. Writing 15 straight away does not turn the servo on (sample 3).',
+  '始動（b4）は、モード表示 6061h が切り替わったのを確かめてから立ち上げます。': 'Raise start (b4) only after confirming that the mode display 6061h has switched.',
+  '始動の受付（ステータス b12）を見たら b4 を下げ、到達（b10）で完了と判断します。': 'Drop b4 once the start is acknowledged (status b12), and treat target reached (b10) as completion.',
+  'RWw・RWr はリンク周期（初期 5 ms）ごとにしか届きません。書いた次のスキャンでは、まだ結果が返っていません。タイミングチャートで b4 と b12 のずれを見られます。': 'RWw and RWr only arrive once per link period (5 ms by default). The result is not back yet on the scan right after you write. The timing chart shows the delay between b4 and b12.',
+  'ペインは左上の ⠿ をドラッグして並べ替えられます。右上のボタンで幅を変えたり、たたんだりできます。並びはこのブラウザに保存されます。': 'Drag the ⠿ at the top left of a pane to rearrange panes. The buttons at the top right change the width or collapse a pane. The layout is saved in this browser.',
+  '絞り込み（デバイス・コメント）': 'Filter (device or comment)',
+  'コメントの絞り込み': 'Filter comments',
+  '行を追加': 'Add row',
+  '使っているデバイスを追加': 'Add devices in use',
+  'コメント（32 文字まで）': 'Comment (up to 32 chars)',
+  'CSV をコピー': 'Copy CSV',
+  'CSV を読み込む': 'Import CSV',
+  '初期値に戻す': 'Restore defaults',
+  'コメントはラダー図・デバイスモニタ・タイミングチャートに出ます。このブラウザに保存されます。': 'Comments appear in the ladder, device monitor and timing chart. They are saved in this browser.',
+  'CSV（デバイス名,コメント）': 'CSV (device,comment)',
+  '接点:': 'Contacts:',
+  '比較:': 'Compare:',
+  '（AND・OR も同じ。32 ビットは': '(same for AND/OR; 32-bit uses',
+  'など）': 'etc.)',
+  '出力:': 'Output:',
+  '、タイマ': ', timer',
+  '（100 ms 単位）、カウンタ': '(100 ms units), counter',
+  '転送・演算:': 'Move/math:',
+  '（': '(',
+  '）': ')',
+  'の積は 32 ビットで d・d+1 に入る）（P 付きは立上りで 1 回）': 'product is 32-bit, stored in d and d+1) (the P versions run once on the rising edge)',
+  '変換:': 'Convert:',
+  '（BCD を BIN に。例': '(BCD to binary, e.g.',
+  'デバイス:': 'Devices:',
+  '、ワードのビット指定': ', bit of a word',
+  '（.0〜.F）': '(.0–.F)',
+  '桁指定（読み出しのみ）:': 'Digit spec (read only):',
+  '＝X10〜X13 の 4 点を 1 桁として読む（K1〜K4、X・Y・M）': '= reads X10–X13 (4 points) as one digit (K1–K4; X, Y, M)',
+  'から行末はコメント。コメントだけの行は回路の上に表示（ステートメント）': 'to the end of the line is a comment. A comment-only line is shown above the rung (statement)',
+  // 波形
+  'タイミングチャートとトレース': 'Timing chart and trace',
+  'タイミングチャートとトレースのペインを移動（矢印キーでも動く）': 'Move the waveform pane (arrow keys also work)',
+  '波形': 'Waveforms',
+  'サンプリング中': 'Sampling',
+  'タイミングチャート': 'Timing chart',
+  'トレース（直近 4 秒）': 'Trace (last 4 s)',
+  'タイミングチャートのデバイス（カンマ区切り）': 'Timing chart devices (comma separated)',
+  '時間幅': 'Window',
+  'X0〜X37 Y0〜Y37 M D T C SM400 SM402 SM412': 'X0–X37 Y0–Y37 M D T C SM400 SM402 SM412',
+  '0.5 秒': '0.5 s', '1 秒': '1 s', '2 秒': '2 s', '5 秒': '5 s', '10 秒': '10 s', '20 秒': '20 s',
+  '停止': 'Stop',
+  'トリガ': 'Trigger',
+  'トリガ条件': 'Trigger edge',
+  '立上り': 'Rising',
+  '立下り': 'Falling',
+  'トリガ待ち': 'Arm trigger',
+  'カーソル消去': 'Clear cursors',
+  'チャートをクリックするとカーソル A、もう一度で B。停止中に使います。': 'Click the chart for cursor A, again for B. Use while stopped.',
+  'ビットとワードのタイミングチャート': 'Timing chart of bits and words',
+  '速度・偏差・トルク': 'Speed, deviation, torque',
+  '速度・偏差・トルクのトレース': 'Trace of speed, deviation and torque',
+  // サンプルラダーのコメント（; のあと）
+  '===== サーボ ON（CiA402 の状態遷移を 1 段ずつ）=====': '===== Servo ON (CiA402 state machine, one step at a time) =====',
+  'サーボ ON 要求 M100: サーボ ON スイッチ X5、非常停止 X7 で切れる': 'Servo ON request M100: servo ON switch X5, cut by E-stop X7',
+  'スイッチオン禁止（b6）→ Shutdown（6）': 'Switch on disabled (b6) → Shutdown (6)',
+  'スイッチオン可（b0）でまだスイッチオンでない → Switch on（7）': 'Ready to switch on (b0), not yet switched on → Switch on (7)',
+  'スイッチオン（b1）以降 → Enable operation（15）': 'Switched on (b1) or later → Enable operation (15)',
+  'サーボ OFF 要求 → Shutdown（6）': 'Servo OFF request → Shutdown (6)',
+  '===== サーボ ON（誤り: 状態を見ずに 15 を書く）=====': '===== Servo ON (mistake: writes 15 without checking the state) =====',
+  '===== コントロールワードの各ビット（MOV のあとに書く）=====': '===== Control word bits (write after the MOVs) =====',
+  'b4: 原点復帰始動 M11・JOG 正転 M21・ポイントテーブル始動 M31': 'b4: homing start M11 / JOG forward M21 / point table start M31',
+  'b5: JOG 逆転': 'b5: JOG reverse',
+  'b7: 異常リセット（X6）': 'b7: fault reset (X6)',
+  '===== ランプ: 運転中は速度実際値が ±1 mm/s を超えているとき =====': '===== Lamps: "running" while the actual speed exceeds ±1 mm/s =====',
+  '===== 原点復帰（X2）: モードを hm（6）にして始動 =====': '===== Homing (X2): set the mode to hm (6) and start =====',
+  'モード表示 6061h が 6 になってから始動（b4）': 'Start (b4) after the mode display 6061h becomes 6',
+  '原点復帰完了（b12）と到達（b10）で終わり': 'Done on homing complete (b12) and target reached (b10)',
+  '原点復帰エラー（b13）・異常で中止': 'Abort on homing error (b13) or fault',
+  '===== オーバーライドは使わない（100 % 固定）=====': '===== No override (fixed at 100 %) =====',
+  '===== JOG（X3・X4）: モードを jg（-100）にする =====': '===== JOG (X3/X4): set the mode to jg (-100) =====',
+  'JOG 速度 50 mm/s（単位 µm/s）': 'JOG speed 50 mm/s (unit µm/s)',
+  '===== ポイントテーブル No.1（X0）=====': '===== Point table No.1 (X0) =====',
+  'ふだんは pt（-101）': 'Normally pt (-101)',
+  'モード表示が pt のとき始動（b4）': 'Start (b4) when the mode display is pt',
+  '始動受付（b12）を見たら b4 を下げる': 'Drop b4 once the start is acknowledged (b12)',
+  'b8: 一時停止（X1 を押している間）': 'b8: halt (while X1 is held)',
+  '===== 自動運転 M2: 起動 X0（原点復帰済み）で自己保持、停止 X1（サイクル停止）・非常停止・異常で切れる =====': '===== Auto run M2: latched by Start X0 (when homed), cut by Stop X1 (cycle stop), E-stop or fault =====',
+  'モードは pt（-101）': 'Mode is pt (-101)',
+  '工程 D100: 1 No.1 始動・2 到達待ち・3 待ち・4 No.2 始動・5 到達待ち・6 待ち': 'Step D100: 1 start No.1, 2 wait to reach, 3 wait, 4 start No.2, 5 wait to reach, 6 wait',
+  'ポイントテーブル指定': 'Select the point table No.',
+  '始動（b4）は 1 か所でまとめて出す': 'Output start (b4) in one place',
+  '始動受付（b12）で次へ': 'Next step on start acknowledge (b12)',
+  '受付が消えて到達（b10）したら次へ': 'Next step when the acknowledge clears and the target is reached (b10)',
+  '待ち 0.5 秒': 'Wait 0.5 s',
+  '異常・非常停止で工程を 0 に戻す': 'Reset the step to 0 on fault or E-stop',
+  '停止 X1 はサイクル停止に使うので、一時停止（b8）は使わない': 'Stop X1 is used for cycle stop, so halt (b8) is not used',
+  '===== デジタルスイッチ（X10〜X13、BCD 1 桁）で No. を読む =====': '===== Read the No. from the digital switch (X10–X13, 1 BCD digit) =====',
+  'No. が 1〜4 のときだけ M32 が ON（0・5〜9 では始動しない）': 'M32 is ON only for No. 1–4 (0 and 5–9 do not start)',
+  '===== 選んだ No. で始動（X0）=====': '===== Start with the selected No. (X0) =====',
+  '===== オーバーライド: ロータリースイッチ（X14〜X17、16 進 1 桁）=====': '===== Override: rotary switch (X14–X17, 1 hex digit) =====',
+  '0〜A → 50〜150 %（10 % 刻み）: D11 × 10 ＋ 50（積は 32 ビットで D12・D13 に入る）': '0–A → 50–150 % (10 % steps): D11 × 10 + 50 (32-bit product in D12/D13)',
+  'B〜F は 150 % 止まり': 'B–F stay at 150 %',
+  'オーバーライド率を RWw3 へ': 'Send the override % to RWw3',
+};
+// 英訳辞書で引く（英語表示でないとき・辞書にないときはそのまま）
+const T = s => EN_MODE && Object.hasOwn(EN, s) ? EN[s] : s;
+// HTML に直接書いた文言（テキスト・title・aria-label・placeholder）を英訳に置き換える
+function applyLang() {
+  document.documentElement.lang = LANG;
+  document.title = T(document.title);
+  if (!EN_MODE) return;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentNode.nodeName === 'SCRIPT' ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  for (let n; (n = w.nextNode());) {
+    const s = n.nodeValue.trim();
+    if (s && Object.hasOwn(EN, s)) n.nodeValue = n.nodeValue.replace(s, () => EN[s]);
+  }
+  for (const el of document.querySelectorAll('[title],[aria-label],[placeholder]'))
+    for (const a of ['title', 'aria-label', 'placeholder']) { const v = el.getAttribute(a); if (v && Object.hasOwn(EN, v)) el.setAttribute(a, EN[v]); }
+}
 const DT = 50e-6, SUB = 20;                 // 1 スキャン = 1 ms = 50 µs × 20
 const LEAD = 10;                            // ボールねじリード mm/rev
 const RATED = 3000;                         // 定格回転速度 r/min（加減速時定数の基準）
@@ -727,10 +1014,22 @@ let ptab = [
   { pos: 50, spd: 300, acc: 200, dec: 200, dwell: 0, aux: 2 },
   { pos: -50, spd: 300, acc: 200, dec: 200, dwell: 0, aux: 2 },
 ];
-const AUX = ['0: 絶対値・終了', '1: 絶対値・連続', '2: 増分値・終了', '3: 増分値・連続'];
+const AUX = EN_MODE ? ['0: Absolute, end', '1: Absolute, continue', '2: Incremental, end', '3: Incremental, continue'] : ['0: 絶対値・終了', '1: 絶対値・連続', '2: 増分値・終了', '3: 増分値・連続'];
 
 // リンクの割り付け（このシミュレータでの例）
-const RMAP = [
+const RMAP = EN_MODE ? [
+  [RWW + 0, 'RWw0', '6040h Control word', 'b0 Switch on, b1 Enable voltage, b2 Quick stop release, b3 Enable operation, b4 Start (pt/hm) / JOG forward (jg), b5 JOG reverse (jg), b7 Fault reset, b8 Halt'],
+  [RWW + 1, 'RWw1', '6060h Mode of operation', '-101 Point table (pt), -100 JOG (jg), 6 Homing (hm)'],
+  [RWW + 2, 'RWw2', 'Point table No.', 'No. to start (1–4)'],
+  [RWW + 3, 'RWw3', 'Override %', 'Applied to positioning, JOG and homing speed (0 = 100 %, max 200 %). An assignment specific to this simulator'],
+  [RWW + 4, 'RWw4-5', 'JOG speed (32 bit)', 'Unit µm/s (50000 = 50 mm/s)'],
+  [RWR + 0, 'RWr0', '6041h Status word', 'b0 Ready to switch on, b1 Switched on, b2 Operation enabled (servo ON), b3 Fault, b4 Voltage enabled, b5 Quick stop release, b6 Switch on disabled, b7 Warning, b9 Remote, b10 Target reached, b12 Start ack (pt) / Homing complete (hm), b13 Homing error (hm)'],
+  [RWR + 1, 'RWr1', '6061h Mode display', 'The mode of operation actually in effect'],
+  [RWR + 2, 'RWr2', 'Completed point table No.', 'The last No. reached'],
+  [RWR + 4, 'RWr4-5', '6064h Position actual (32 bit)', 'Unit µm'],
+  [RWR + 6, 'RWr6-7', '606Ch Velocity actual (32 bit)', 'Unit µm/s'],
+  [RWR + 8, 'RWr8', 'Alarm No.', '52 = AL.52 etc. 0 = normal'],
+] : [
   [RWW + 0, 'RWw0', '6040h コントロールワード', 'b0 スイッチオン・b1 電圧有効・b2 クイックストップ解除・b3 運転有効・b4 始動（pt・hm）/ JOG 正転（jg）・b5 JOG 逆転（jg）・b7 異常リセット・b8 一時停止'],
   [RWW + 1, 'RWw1', '6060h 制御モード', '-101 ポイントテーブル（pt）・-100 JOG（jg）・6 原点復帰（hm）'],
   [RWW + 2, 'RWw2', 'ポイントテーブル指定', '始動する No.（1〜4）'],
@@ -744,7 +1043,13 @@ const RMAP = [
   [RWR + 8, 'RWr8', 'アラーム番号', '52 = AL.52 など。0 は正常'],
 ];
 const RCOM = Object.fromEntries(RMAP.map(r => ['D' + r[0], r[2]]));
-const IOC = {
+const IOC = EN_MODE ? {
+  X0: 'Start PB', X1: 'Stop PB (halt in sample 1, cycle stop in 2)', X2: 'Home PB', X3: 'JOG+ PB', X4: 'JOG− PB', X5: 'Servo ON SW', X6: 'Fault reset PB', X7: 'E-stop SW',
+  X10: 'Digital switch 1', X11: 'Digital switch 2', X12: 'Digital switch 4', X13: 'Digital switch 8',
+  X14: 'Rotary switch 1', X15: 'Rotary switch 2', X16: 'Rotary switch 4', X17: 'Rotary switch 8',
+  Y0: 'Running lamp', Y1: 'Homing done lamp', Y2: 'Fault lamp', Y3: 'Positioning done lamp',
+  SM400: 'Always ON', SM402: 'ON for 1 scan after RUN', SM412: '1 s clock',
+} : {
   X0: '起動 PB', X1: '停止 PB（サンプル 1 は一時停止、2 はサイクル停止）', X2: '原点復帰 PB', X3: 'JOG+ PB', X4: 'JOG− PB', X5: 'サーボ ON SW', X6: '異常リセット PB', X7: '非常停止 SW',
   X10: 'デジタルスイッチ 1', X11: 'デジタルスイッチ 2', X12: 'デジタルスイッチ 4', X13: 'デジタルスイッチ 8',
   X14: 'ロータリースイッチ 1', X15: 'ロータリースイッチ 2', X16: 'ロータリースイッチ 4', X17: 'ロータリースイッチ 8',
@@ -981,10 +1286,16 @@ MOV K150 D14
 LD SM400
 MOV D14 D2003
 `;
-const SAMPLES = {
+const SAMPLES_JA = {
   s1: S1, s2: S2, s3: S1.replace(SERVO_ON_OK, SERVO_ON_NG), s4: S1.replace(PT_FIXED, PT_SELECT),
   s5: S1.replace(OVR_FIXED, OVR), s6: S1.replace(OVR_FIXED, OVR).replace(PT_FIXED, PT_SELECT),
 };
+// サンプルのコメント（; から行末）を英訳辞書で置き換える
+const trSrc = s => s.replace(/;(\s*)(.*)$/gm, (m, sp, c) => ';' + sp + (Object.hasOwn(EN, c.trim()) ? EN[c.trim()] : c));
+const SAMPLES_EN = Object.fromEntries(Object.entries(SAMPLES_JA).map(([k, v]) => [k, trSrc(v)]));
+const SAMPLES = EN_MODE ? SAMPLES_EN : SAMPLES_JA;
+// エディタの中身が、どちらかの言語のサンプルそのままか
+const isSample = v => Object.values(SAMPLES_JA).includes(v) || Object.values(SAMPLES_EN).includes(v);
 
 // ---------- オペランド ----------
 function parseOperand(tok) {
@@ -998,7 +1309,7 @@ function parseOperand(tok) {
   }
   if ((m = tok.match(/^K(-?\d+)$/))) return { k: 'k', v: parseInt(m[1], 10), raw: tok };
   if ((m = tok.match(/^H([0-9A-F]+)$/))) return { k: 'k', v: parseInt(m[1], 16), raw: tok };
-  if (/^U\d+/.test(tok)) return { k: 'bad', raw: tok, why: 'この構成にユニット（U□）はありません。サーボとのやり取りは D1000〜（RWr）・D2000〜（RWw）です' };
+  if (/^U\d+/.test(tok)) return { k: 'bad', raw: tok, why: TX('この構成にユニット（U□）はありません。サーボとのやり取りは D1000〜（RWr）・D2000〜（RWw）です', 'There are no modules (U□) in this setup. The servo is accessed through D1000– (RWr) and D2000– (RWw)') };
   let base = tok, bit = null;
   const dot = tok.match(/^(.*)\.([0-9A-F])$/);
   if (dot) { base = dot[1]; bit = parseInt(dot[2], 16); }
@@ -1014,21 +1325,21 @@ const isBitOp = a => a.k === 'dev' && ((['X', 'Y', 'M', 'SM', 'T', 'C'].includes
 const isWordOp = a => a.k === 'k' || a.k === 'kn' || (a.k === 'dev' && ['D', 'SD', 'T', 'C'].includes(a.t) && a.bit == null);
 function checkRange(a) {
   if (a.k === 'bad') return a.why;
-  if (a.k === 'kn' && a.t !== 'M' && a.n + a.dig * 4 > 32) return `${a.raw}: X・Y は X37・Y37 までです`;
+  if (a.k === 'kn' && a.t !== 'M' && a.n + a.dig * 4 > 32) return TX(`${a.raw}: X・Y は X37・Y37 までです`, `${a.raw}: X and Y go up to X37 and Y37`);
   if (a.k !== 'dev') return null;
-  if ((a.t === 'X' || a.t === 'Y') && a.n >= 32) return `${a.raw}: FX5UC-64MT/D の入出力は X0〜X37・Y0〜Y37 です`;
+  if ((a.t === 'X' || a.t === 'Y') && a.n >= 32) return TX(`${a.raw}: FX5UC-64MT/D の入出力は X0〜X37・Y0〜Y37 です`, `${a.raw}: FX5UC-64MT/D I/O is X0–X37 and Y0–Y37`);
   return null;
 }
 function writableBit(a) {
-  if (a.k !== 'dev') return 'ビットデバイスを指定します';
-  if (a.t === 'X') return `${a.raw} は入力です。OUT・SET では使えません`;
-  if (a.t === 'SM') return `${a.raw} はこのシミュレータでは書き込めません`;
-  if (a.t === 'T' || a.t === 'C') return `${a.raw}: タイマ・カウンタは OUT ${a.t}0 K10 の形で書きます`;
-  if (a.t === 'D' && a.bit == null) return `${a.raw}: ワードデバイスにはビット番号を付けます（例 ${a.raw}.0）`;
+  if (a.k !== 'dev') return TX('ビットデバイスを指定します', 'Specify a bit device');
+  if (a.t === 'X') return TX(`${a.raw} は入力です。OUT・SET では使えません`, `${a.raw} is an input and cannot be used with OUT or SET`);
+  if (a.t === 'SM') return TX(`${a.raw} はこのシミュレータでは書き込めません`, `${a.raw} cannot be written in this simulator`);
+  if (a.t === 'T' || a.t === 'C') return TX(`${a.raw}: タイマ・カウンタは OUT ${a.t}0 K10 の形で書きます`, `${a.raw}: write timers and counters as OUT ${a.t}0 K10`);
+  if (a.t === 'D' && a.bit == null) return TX(`${a.raw}: ワードデバイスにはビット番号を付けます（例 ${a.raw}.0）`, `${a.raw}: add a bit number to a word device (e.g. ${a.raw}.0)`);
   return null;
 }
 function writableWord(a) {
-  if (a.k !== 'dev' || a.t !== 'D' || a.bit != null) return `${a.raw} には書き込めません（D を指定）`;
+  if (a.k !== 'dev' || a.t !== 'D' || a.bit != null) return TX(`${a.raw} には書き込めません（D を指定）`, `${a.raw} cannot be written (specify D)`);
   return null;
 }
 
@@ -1041,16 +1352,16 @@ const par = (a, b) => ({ t: 'p', items: [...(a.t === 'p' ? a.items : [a]), ...(b
 function parseOut(op, args, ln, err) {
   const A = args.map(parseOperand);
   for (let i = 0; i < A.length; i++) {
-    if (!A[i]) { err(`${args[i]} は使えないオペランドです`); return null; }
+    if (!A[i]) { err(TX(`${args[i]} は使えないオペランドです`, `${args[i]} is not a valid operand`)); return null; }
     const e = checkRange(A[i]); if (e) { err(e); return null; }
   }
-  const need = k => { if (A.length !== k) { err(`${op} のオペランドは ${k} 個です（いまは ${A.length} 個）`); return false; } return true; };
+  const need = k => { if (A.length !== k) { err(TX(`${op} のオペランドは ${k} 個です（いまは ${A.length} 個）`, `${op} takes ${k} operand(s) (got ${A.length})`)); return false; } return true; };
   const k16 = (dbl, ...idx) => {
     if (dbl) return true;
-    for (const i of idx) { const a = A[i]; if (a.k === 'k' && (a.v < -32768 || a.v > 32767)) { err(`${a.raw} は 16 ビットの範囲（-32768〜32767）を超えます。D 付きの命令（DMOV など）を使ってください`); return false; } }
+    for (const i of idx) { const a = A[i]; if (a.k === 'k' && (a.v < -32768 || a.v > 32767)) { err(TX(`${a.raw} は 16 ビットの範囲（-32768〜32767）を超えます。D 付きの命令（DMOV など）を使ってください`, `${a.raw} is outside the 16-bit range (-32768 to 32767). Use a D-prefixed instruction (DMOV etc.)`)); return false; } }
     return true;
   };
-  const word = i => { if (!isWordOp(A[i])) { err(`${A[i].raw} はワードの値として使えません`); return false; } return true; };
+  const word = i => { if (!isWordOp(A[i])) { err(TX(`${A[i].raw} はワードの値として使えません`, `${A[i].raw} cannot be used as a word value`)); return false; } return true; };
   const base = { op, args: A, line: ln, label: [op, ...A.map(a => a.raw)].join(' '), prev: false, on: false };
   let m;
   if (op === 'OUT') {
@@ -1071,7 +1382,7 @@ function parseOut(op, args, ln, err) {
   }
   if (op === 'PLS' || op === 'PLF') {
     if (!need(1)) return null;
-    if (!(A[0].k === 'dev' && (A[0].t === 'M' || A[0].t === 'Y'))) { err(`${op} は M か Y を指定します`); return null; }
+    if (!(A[0].k === 'dev' && (A[0].t === 'M' || A[0].t === 'Y'))) { err(TX(`${op} は M か Y を指定します`, `${op} takes M or Y`)); return null; }
     return { ...base, kind: op.toLowerCase() };
   }
   if ((m = op.match(/^(D?)MOV(P?)$/))) {
@@ -1102,8 +1413,8 @@ function parseOut(op, args, ln, err) {
     const e = writableWord(A[1]); if (e) { err(e); return null; }
     return { ...base, kind: 'bin', pulse: !!m[1] };
   }
-  if (/PSTRT|DRV|PLSV|DSZR/.test(op)) { err(`${op} は使いません。MR-J5-G 直結では D2000〜（RWw）にコントロールワードなどを書いて動かします`); return null; }
-  err(`${op} はこのシミュレータで使えない命令です（「使える命令」を参照）`);
+  if (/PSTRT|DRV|PLSV|DSZR/.test(op)) { err(TX(`${op} は使いません。MR-J5-G 直結では D2000〜（RWw）にコントロールワードなどを書いて動かします`, `${op} is not used. With a directly connected MR-J5-G, write the control word etc. to D2000– (RWw)`)); return null; }
+  err(TX(`${op} はこのシミュレータで使えない命令です（「使える命令」を参照）`, `${op} is not supported in this simulator (see "Instructions")`));
   return null;
 }
 
@@ -1113,7 +1424,7 @@ function parseProgram(text) {
   const err = (ln, msg) => errors.push({ line: ln, msg });
   const flush = () => {
     if (!stack.length && !outs.length) return;
-    if (!outs.length) err(rline, '出力（OUT・SET・MOV など）のない回路があります');
+    if (!outs.length) err(rline, TX('出力（OUT・SET・MOV など）のない回路があります', 'A rung has no output (OUT, SET, MOV, etc.)'));
     else rungs.push({ cond: stack[0], outs, comment: rc, line: rline });
     stack = []; outs = []; rc = null;
   };
@@ -1131,45 +1442,45 @@ function parseProgram(text) {
     if (ct || cmp) {
       let node;
       if (ct) {
-        if (args.length !== 1) { err(ln, `${op} はデバイスを 1 つ指定します`); continue; }
+        if (args.length !== 1) { err(ln, TX(`${op} はデバイスを 1 つ指定します`, `${op} takes one device`)); continue; }
         const a = parseOperand(args[0]);
         if (a && a.k === 'bad') { err(ln, a.why); continue; }
-        if (!a || !isBitOp(a)) { err(ln, `${args[0]} は接点に使えません（ワードはビット番号付きで。例 D1000.2）`); continue; }
+        if (!a || !isBitOp(a)) { err(ln, TX(`${args[0]} は接点に使えません（ワードはビット番号付きで。例 D1000.2）`, `${args[0]} cannot be a contact (use a bit of a word, e.g. D1000.2)`)); continue; }
         const e = checkRange(a); if (e) { err(ln, e); continue; }
         node = { t: 'c', mode: ct[1], a, w: 1, line: ln, prev: false, on: false };
       } else {
-        if (args.length !== 2) { err(ln, `${op} は値を 2 つ指定します`); continue; }
+        if (args.length !== 2) { err(ln, TX(`${op} は値を 2 つ指定します`, `${op} takes two values`)); continue; }
         const a = parseOperand(args[0]), b = parseOperand(args[1]);
         const bad = [a, b].find(x => x && x.k === 'bad'); if (bad) { err(ln, bad.why); continue; }
-        if (!a || !b || !isWordOp(a) || !isWordOp(b)) { err(ln, `${op} にはワードの値を 2 つ指定します`); continue; }
+        if (!a || !b || !isWordOp(a) || !isWordOp(b)) { err(ln, TX(`${op} にはワードの値を 2 つ指定します`, `${op} takes two word values`)); continue; }
         const e = checkRange(a) || checkRange(b); if (e) { err(ln, e); continue; }
-        if (!cmp[2] && [a, b].some(x => x.k === 'k' && (x.v < -32768 || x.v > 32767))) { err(ln, `16 ビットの範囲を超えています。32 ビットの比較は ${cmp[1]}D${cmp[3]} を使います`); continue; }
+        if (!cmp[2] && [a, b].some(x => x.k === 'k' && (x.v < -32768 || x.v > 32767))) { err(ln, TX(`16 ビットの範囲を超えています。32 ビットの比較は ${cmp[1]}D${cmp[3]} を使います`, `Outside the 16-bit range. Use ${cmp[1]}D${cmp[3]} for a 32-bit compare`)); continue; }
         node = { t: 'c', cmp: cmp[3], a, b, w: 2, line: ln, on: false };
       }
       const kind = ct ? ct[0] : cmp[1].toLowerCase();
       if (kind === 'ld') {
         if (outs.length) flush();
-        if (!stack.length) { rline = ln; rc = stmt.length ? stmt.join(' ／ ') : null; stmt = []; }
+        if (!stack.length) { rline = ln; rc = stmt.length ? stmt.join(TX(' ／ ', ' / ')) : null; stmt = []; }
         stack.push(node);
       } else {
-        if (outs.length) { err(ln, '出力のあとに AND・OR は置けません。回路を分けてください'); continue; }
-        if (!stack.length) { err(ln, `${op} の前に LD がありません`); continue; }
+        if (outs.length) { err(ln, TX('出力のあとに AND・OR は置けません。回路を分けてください', 'AND/OR cannot follow an output. Split the rung')); continue; }
+        if (!stack.length) { err(ln, TX(`${op} の前に LD がありません`, `No LD before ${op}`)); continue; }
         const top = stack.pop();
         stack.push(kind === 'and' ? ser(top, node) : par(top, node));
       }
       continue;
     }
     if (op === 'ANB' || op === 'ORB') {
-      if (outs.length) { err(ln, `出力のあとに ${op} は置けません`); continue; }
-      if (stack.length < 2) { err(ln, `${op} でつなぐブロックが 2 つありません`); continue; }
+      if (outs.length) { err(ln, TX(`出力のあとに ${op} は置けません`, `${op} cannot follow an output`)); continue; }
+      if (stack.length < 2) { err(ln, TX(`${op} でつなぐブロックが 2 つありません`, `${op} needs two blocks to join`)); continue; }
       const b = stack.pop(), a = stack.pop();
       stack.push(op === 'ANB' ? ser(a, b) : par(a, b));
       continue;
     }
     const o = parseOut(op, args, ln, msg => err(ln, msg));
     if (!o) continue;
-    if (!stack.length) { err(ln, `${op} の前に条件（LD …）がありません`); continue; }
-    if (stack.length > 1) { err(ln, `ブロックが ${stack.length} 個残っています。ANB か ORB でまとめてください`); stack = [stack.reduce(ser)]; }
+    if (!stack.length) { err(ln, TX(`${op} の前に条件（LD …）がありません`, `No condition (LD …) before ${op}`)); continue; }
+    if (stack.length > 1) { err(ln, TX(`ブロックが ${stack.length} 個残っています。ANB か ORB でまとめてください`, `${stack.length} blocks are left. Combine them with ANB or ORB`)); stack = [stack.reduce(ser)]; }
     outs.push(o);
   }
   flush();
@@ -1177,7 +1488,7 @@ function parseProgram(text) {
   for (const r of rungs) for (const o of r.outs) if (o.kind === 'out') {
     const k = o.args[0].raw; if (!coils.has(k)) coils.set(k, []); coils.get(k).push(o.line);
   }
-  for (const [k, ls] of coils) if (ls.length > 1) warns.push({ line: ls[ls.length - 1], msg: `${k} が二重コイルです（${ls.join('・')} 行目）。後ろの回路の結果で上書きされます` });
+  for (const [k, ls] of coils) if (ls.length > 1) warns.push({ line: ls[ls.length - 1], msg: TX(`${k} が二重コイルです（${ls.join('・')} 行目）。後ろの回路の結果で上書きされます`, `${k} is a double coil (lines ${ls.join(', ')}). The later rung overwrites it`) });
   return { rungs, errors, warns };
 }
 
@@ -1316,12 +1627,12 @@ const mot = {
     this.th += this.w * dt;
     const p2 = this.pos();
     if (p2 > MECH.endHi || p2 < MECH.endLo) { this.th = ((p2 > MECH.endHi ? MECH.endHi : MECH.endLo) - MECH.start) / LEAD * TWO_PI; this.w = 0; this.crash = true; }
-    if (on && Math.abs(this.thc - this.th) > 3 * TWO_PI) drv.trip(52, '誤差過大');
+    if (on && Math.abs(this.thc - this.th) > 3 * TWO_PI) drv.trip(52, TX('誤差過大', 'Excessive error'));
   },
 };
 
 // ---------- MR-J5-G（CiA402 の状態遷移・位置決めモード） ----------
-const ST = { SOD: 'スイッチオン禁止', RTSO: 'スイッチオン可', SO: 'スイッチオン', OE: '運転有効（サーボ ON）', QSA: 'クイックストップ中', FAULT: '異常' };
+const ST = EN_MODE ? { SOD: 'Switch on disabled', RTSO: 'Ready to switch on', SO: 'Switched on', OE: 'Operation enabled (servo ON)', QSA: 'Quick stop active', FAULT: 'Fault' } : { SOD: 'スイッチオン禁止', RTSO: 'スイッチオン可', SO: 'スイッチオン', OE: '運転有効（サーボ ON）', QSA: 'クイックストップ中', FAULT: '異常' };
 const drv = {
   state: 'SOD', cw: 0, prevCw: 0, mode: MODE.PT, modeReq: MODE.PT, modeT: 0, tpt: 0, jogV: 0,
   alarm: 0, alarmMsg: '', warn: '', oeT: 0,
@@ -1368,7 +1679,7 @@ const drv = {
       if (!((cw >> 4) & 1)) this.ack = false;
       if (rise(4) && !halt && this.task === 'idle') {
         if (this.tpt >= 1 && this.tpt <= ptab.length) { this.ack = true; this.reached = false; this.startPt(this.tpt); }
-        else this.warn = 'ポイントテーブル番号の範囲外';
+        else this.warn = TX('ポイントテーブル番号の範囲外', 'Point table No. out of range');
       }
     } else if (this.mode === MODE.HM) {
       if (rise(4) && !halt && this.task === 'idle') {
@@ -1396,7 +1707,7 @@ const drv = {
     const on = this.on() && this.oeT >= 0.03;
     if (!this.on()) { this.cmd = mot.pos(); this.v = 0; }
     // ストロークエンド（警告。その方向には動かない）
-    const lsWarn = !mach.lspOK ? 'AL.99 正転ストロークエンド' : !mach.lsnOK ? 'AL.99 逆転ストロークエンド' : '';
+    const lsWarn = !mach.lspOK ? TX('AL.99 正転ストロークエンド', 'AL.99 Forward stroke end') : !mach.lsnOK ? TX('AL.99 逆転ストロークエンド', 'AL.99 Reverse stroke end') : '';
     if (lsWarn) this.warn = lsWarn; else if (this.warn.startsWith('AL.99')) this.warn = '';
     if (this.task === 'idle' || !on) { mot.step(dt, on); return; }
     if (this.task === 'dwell') { this.dwell -= dt; if (this.dwell <= 0) this.endPt(); mot.step(dt, on); return; }
@@ -1440,9 +1751,9 @@ const drv = {
 
 // ---------- 入力（操作盤） ----------
 const PANEL = [
-  { x: 0, nm: '起動', c: 'green' }, { x: 1, nm: '停止', c: 'red' }, { x: 2, nm: '原点復帰', c: 'blue' }, { x: 6, nm: '異常<br>リセット', c: 'yellow' },
+  { x: 0, nm: TX('起動', 'Start'), c: 'green' }, { x: 1, nm: TX('停止', 'Stop'), c: 'red' }, { x: 2, nm: TX('原点復帰', 'Home'), c: 'blue' }, { x: 6, nm: TX('異常<br>リセット', 'Fault<br>reset'), c: 'yellow' },
   // 機械図の左が LSN（−）側なので、JOG− を左、JOG+ を右に置く（割り付けは X3=JOG+、X4=JOG− のまま）
-  { x: 4, nm: 'JOG−', c: '' }, { x: 3, nm: 'JOG+', c: '' }, { x: 5, nm: 'サーボ ON', sw: true }, { x: 7, nm: '非常停止', sw: true, estop: true },
+  { x: 4, nm: 'JOG−', c: '' }, { x: 3, nm: 'JOG+', c: '' }, { x: 5, nm: TX('サーボ ON', 'Servo ON'), sw: true }, { x: 7, nm: TX('非常停止', 'E-stop'), sw: true, estop: true },
 ];
 const panelIn = new Uint8Array(32);
 panelIn[5] = 1;
@@ -1510,17 +1821,17 @@ document.addEventListener('keydown', e => {
 function setState(text, cls) {
   const el = $('progState');
   if (text) { el.textContent = text; el.className = 'chip ' + cls; return; }
-  if (src.value === written) { el.textContent = '書込み済み'; el.className = 'chip ok'; }
-  else { el.textContent = '未変換（F4 で書込み）'; el.className = 'chip warn'; }
+  if (src.value === written) { el.textContent = TX('書込み済み', 'Written'); el.className = 'chip ok'; }
+  else { el.textContent = TX('未変換（F4 で書込み）', 'Not converted (F4 to write)'); el.className = 'chip warn'; }
 }
 function showMsgs(p) {
   const box = $('msgs');
-  const items = [...p.errors.map(e => ({ ...e, c: 'e', h: 'エラー' })), ...p.warns.map(e => ({ ...e, c: 'w', h: '注意' }))].sort((a, b) => a.line - b.line);
+  const items = [...p.errors.map(e => ({ ...e, c: 'e', h: TX('エラー', 'Error') })), ...p.warns.map(e => ({ ...e, c: 'w', h: TX('注意', 'Warning') }))].sort((a, b) => a.line - b.line);
   box.innerHTML = '';
-  if (!items.length) { box.innerHTML = '<span class="hint">エラーはありません。</span>'; return; }
+  if (!items.length) { box.innerHTML = `<span class="hint">${TX('エラーはありません。', 'No errors.')}</span>`; return; }
   for (const it of items) {
     const b = document.createElement('button'); b.type = 'button'; b.className = it.c;
-    b.textContent = `${it.line} 行目 ${it.h}: ${it.msg}`;
+    b.textContent = TX(`${it.line} 行目 ${it.h}: ${it.msg}`, `Line ${it.line} ${it.h}: ${it.msg}`);
     b.addEventListener('click', () => gotoLine(it.line));
     box.appendChild(b);
   }
@@ -1534,7 +1845,7 @@ function gotoLine(ln) {
 function writeProgram() {
   const p = parseProgram(src.value);
   showMsgs(p);
-  if (p.errors.length) { setState(`エラー ${p.errors.length} 件。書き込んでいません`, 'crit'); selTab($('tab-src')); return; }
+  if (p.errors.length) { setState(TX(`エラー ${p.errors.length} 件。書き込んでいません`, `${p.errors.length} error(s). Not written`), 'crit'); selTab($('tab-src')); return; }
   prog = p; written = src.value;
   buildLadder(); buildDevMon();
   setState();
@@ -1553,9 +1864,9 @@ for (const t of PAL) {
 let confirmT = 0;
 $('loadSample').addEventListener('click', () => {
   const b = $('loadSample');
-  const dirty = src.value !== written && !Object.values(SAMPLES).includes(src.value);
-  if (dirty && !confirmT) { b.textContent = '編集中の内容を置き換える'; confirmT = setTimeout(() => { b.textContent = '読み込む'; confirmT = 0; }, 3000); return; }
-  clearTimeout(confirmT); confirmT = 0; b.textContent = '読み込む';
+  const dirty = src.value !== written && !isSample(src.value);
+  if (dirty && !confirmT) { b.textContent = TX('編集中の内容を置き換える', 'Replace your edits'); confirmT = setTimeout(() => { b.textContent = TX('読み込む', 'Load'); confirmT = 0; }, 3000); return; }
+  clearTimeout(confirmT); confirmT = 0; b.textContent = TX('読み込む', 'Load');
   src.value = SAMPLES[$('sample').value]; updGutter();
   try { localStorage.setItem('j5g-src', src.value); } catch (e) {}
   writeProgram();
@@ -1595,8 +1906,9 @@ function setDsw(v) {
 function setModes(mode, ovr, load) {
   const key = MODE_SAMPLE[mode + (ovr ? '+ovr' : '')];
   // 操作盤とラダーがずれないよう、切り替えたら必ずサンプルを書き込む。自作のラダーは確かめてから置き換える
-  if (load && !Object.values(SAMPLES).includes(src.value) &&
-      !confirm(`操作盤に合わせて、ラダーをサンプル ${key.slice(1)} に置き換えて書き込みます。エディタの今の内容は消えます。よろしいですか？`)) {
+  if (load && !isSample(src.value) &&
+      !confirm(TX(`操作盤に合わせて、ラダーをサンプル ${key.slice(1)} に置き換えて書き込みます。エディタの今の内容は消えます。よろしいですか？`,
+        `The ladder will be replaced with sample ${key.slice(1)} to match the panel, and written. The current editor content will be lost. Continue?`))) {
     $('ptsel-' + ptMode).checked = true; $(ovrOn ? 'ovr-on' : 'ovr-off').checked = true;
     return;
   }
@@ -1616,8 +1928,20 @@ function setModes(mode, ovr, load) {
 function renderAbout() {
   const sel = ptMode === 'sel', ov = ovrOn;
   const key = Object.keys(SAMPLES).find(k => SAMPLES[k] === written);
-  const run = key ? $('sample').querySelector(`option[value="${key}"]`)?.textContent : '自作のラダー';
-  $('aboutBody').innerHTML = `
+  const run = key ? $('sample').querySelector(`option[value="${key}"]`)?.textContent : TX('自作のラダー', 'Your own ladder');
+  $('aboutBody').innerHTML = EN_MODE ? `
+    <p>A simulated setup: an FX5UC-64MT/D drives an MR-J5-40G directly over CC-Link IE Field Network Basic from its built-in Ethernet port, moving a ball screw axis in positioning mode (point table method). Edit the ladder as GX Works3 mnemonics and write it, and the exchange of the control word and status word changes, and so does the machine motion.</p>
+    <ul>
+      <li><b>No. select (${sel ? 'Selector' : 'Ladder'})</b>: ${sel
+        ? 'Pick No.1–4 with the digital switch on the panel (X10–X13, BCD), and Start (X0) moves to that No. 0 and 5–9 do not start.'
+        : 'The ladder sets the point table No. with <code>MOV K1 D2002</code>. Start (X0) moves to No.1.'}</li>
+      <li><b>Override (${ov ? 'ON' : 'OFF'})</b>: ${ov
+        ? 'Pick 50–150 % with the rotary switch (X14–X17, hex). It is sent to the servo through RWw3 (D2003) and takes effect at once, even while moving, for positioning, JOG and homing.'
+        : 'Speed stays at 100 % (the ladder writes 100 to D2003).'}</li>
+      <li><b>Ladder in the PLC</b>: ${esc(run || '')}</li>
+      <li>On the panel, JOG− moves to the left of the machine view (LSN side) and JOG+ to the right (LSP side).</li>
+    </ul>
+    <p class="hint">An unofficial learning tool, not affiliated with Mitsubishi Electric Corporation. Values come from a simplified model, not from real equipment, and the assignments and settings include examples not verified on real equipment.</p>` : `
     <p>FX5UC-64MT/D の内蔵 Ethernet から CC-Link IE フィールドネットワーク Basic で MR-J5-40G を直結し、位置決めモード（ポイントテーブル方式）でボールねじ軸を動かす想定です。GX Works3 のニーモニックでラダーを書き換えて書き込むと、コントロールワードとステータスワードのやり取りが変わり、機械の動きが変わります。</p>
     <ul>
       <li><b>No. 指定（${sel ? 'セレクタ' : 'ラダー'}）</b>: ${sel
@@ -1649,7 +1973,7 @@ $('power').addEventListener('click', () => {
   Object.assign(mot, { crash: false, integ: 0, T: 0, Tf: 0, w: 0 });
   tr.n = 0;
 });
-$('fault').addEventListener('click', () => drv.trip(52, '誤差過大（模擬）'));
+$('fault').addEventListener('click', () => drv.trip(52, TX('誤差過大（模擬）', 'Excessive error (simulated)')));
 
 // ---------- 操作盤の描画 ----------
 function buildPanel() {
@@ -1673,28 +1997,31 @@ function buildPanel() {
     }
     p.el = el; box.appendChild(el);
   }
-  $('lampsY').innerHTML = [['Y0', '運転中', 'g'], ['Y1', '原点復帰完了', ''], ['Y2', '異常', 'r'], ['Y3', '位置決め完了', 'g']]
+  $('lampsY').innerHTML = [['Y0', TX('運転中', 'Running'), 'g'], ['Y1', TX('原点復帰完了', 'Homing done'), ''], ['Y2', TX('異常', 'Fault'), 'r'], ['Y3', TX('位置決め完了', 'Positioning done'), 'g']]
     .map(([d, n, c]) => `<span class="lamp ${c}" data-y="${parseInt(d.slice(1), 8)}"><i></i>${d} ${n}</span>`).join('');
 }
 
 // ---------- ラダー図 ----------
 // ---------- デバイスコメント ----------
+// [デバイス, 日本語, 英語]。英語も 32 文字まで
 const DEF_COMMENTS = [
-  ['X0', '起動 PB'], ['X1', '停止 PB'], ['X2', '原点復帰 PB'], ['X3', 'JOG+ PB'], ['X4', 'JOG− PB'], ['X5', 'サーボ ON SW'], ['X6', '異常リセット PB'], ['X7', '非常停止 SW'],
-  ['X10', 'デジタルスイッチ 1'], ['X11', 'デジタルスイッチ 2'], ['X12', 'デジタルスイッチ 4'], ['X13', 'デジタルスイッチ 8'],
-  ['X14', 'ロータリースイッチ 1'], ['X15', 'ロータリースイッチ 2'], ['X16', 'ロータリースイッチ 4'], ['X17', 'ロータリースイッチ 8'],
-  ['Y0', '運転中ランプ'], ['Y1', '原点復帰完了ランプ'], ['Y2', '異常ランプ'], ['Y3', '位置決め完了ランプ'],
-  ['M2', '自動運転中'], ['M10', '原点復帰中'], ['M11', '原点復帰の始動'], ['M20', 'JOG 中'], ['M21', 'JOG 正転'], ['M22', 'JOG 逆転'],
-  ['M30', '位置決め始動要求'], ['M31', '位置決めの始動'], ['M32', 'No. 範囲内（1〜4）'], ['M40', '原点復帰済み'], ['M100', 'サーボ ON 要求'],
-  ['T0', '往路のあとの待ち'], ['T1', '復路のあとの待ち'], ['D10', '選択 No.（デジタルスイッチ）'], ['D11', 'ロータリースイッチの値'], ['D12', 'オーバーライド計算（積）'], ['D14', 'オーバーライド %'], ['D100', '工程番号'], ['D101', '往復回数'],
-  ['D2000', 'コントロールワード 6040h'], ['D2000.4', '始動・JOG 正転'], ['D2000.5', 'JOG 逆転'], ['D2000.7', '異常リセット'], ['D2000.8', '一時停止'],
-  ['D2001', '制御モード 6060h'], ['D2002', 'ポイントテーブル指定'], ['D2003', 'オーバーライド %'], ['D2004', 'JOG 速度 µm/s'],
-  ['D1000', 'ステータスワード 6041h'], ['D1000.0', 'スイッチオン可'], ['D1000.1', 'スイッチオン'], ['D1000.2', '運転有効（サーボ ON）'], ['D1000.3', '異常'],
-  ['D1000.6', 'スイッチオン禁止'], ['D1000.7', '警告'], ['D1000.A', '到達'], ['D1000.C', '始動受付・原点復帰完了'], ['D1000.D', '原点復帰エラー'],
-  ['D1001', '制御モード表示 6061h'], ['D1002', '完了ポイントテーブル No.'], ['D1004', '位置実際値 6064h'], ['D1006', '速度実際値 606Ch'], ['D1008', 'アラーム番号'],
-  ['SM400', '常時 ON'], ['SM402', 'RUN 後 1 スキャン ON'], ['SM412', '1 秒クロック'],
+  ['X0', '起動 PB', 'Start PB'], ['X1', '停止 PB', 'Stop PB'], ['X2', '原点復帰 PB', 'Home PB'], ['X3', 'JOG+ PB', 'JOG+ PB'], ['X4', 'JOG− PB', 'JOG− PB'], ['X5', 'サーボ ON SW', 'Servo ON SW'], ['X6', '異常リセット PB', 'Fault reset PB'], ['X7', '非常停止 SW', 'E-stop SW'],
+  ['X10', 'デジタルスイッチ 1', 'Digital switch 1'], ['X11', 'デジタルスイッチ 2', 'Digital switch 2'], ['X12', 'デジタルスイッチ 4', 'Digital switch 4'], ['X13', 'デジタルスイッチ 8', 'Digital switch 8'],
+  ['X14', 'ロータリースイッチ 1', 'Rotary switch 1'], ['X15', 'ロータリースイッチ 2', 'Rotary switch 2'], ['X16', 'ロータリースイッチ 4', 'Rotary switch 4'], ['X17', 'ロータリースイッチ 8', 'Rotary switch 8'],
+  ['Y0', '運転中ランプ', 'Running lamp'], ['Y1', '原点復帰完了ランプ', 'Homing done lamp'], ['Y2', '異常ランプ', 'Fault lamp'], ['Y3', '位置決め完了ランプ', 'Positioning done lamp'],
+  ['M2', '自動運転中', 'Auto running'], ['M10', '原点復帰中', 'Homing'], ['M11', '原点復帰の始動', 'Homing start'], ['M20', 'JOG 中', 'JOG active'], ['M21', 'JOG 正転', 'JOG forward'], ['M22', 'JOG 逆転', 'JOG reverse'],
+  ['M30', '位置決め始動要求', 'Positioning start request'], ['M31', '位置決めの始動', 'Positioning start'], ['M32', 'No. 範囲内（1〜4）', 'No. in range (1–4)'], ['M40', '原点復帰済み', 'Homed'], ['M100', 'サーボ ON 要求', 'Servo ON request'],
+  ['T0', '往路のあとの待ち', 'Wait after outbound'], ['T1', '復路のあとの待ち', 'Wait after return'], ['D10', '選択 No.（デジタルスイッチ）', 'Selected No. (digital switch)'], ['D11', 'ロータリースイッチの値', 'Rotary switch value'], ['D12', 'オーバーライド計算（積）', 'Override calc (product)'], ['D14', 'オーバーライド %', 'Override %'], ['D100', '工程番号', 'Step No.'], ['D101', '往復回数', 'Round trips'],
+  ['D2000', 'コントロールワード 6040h', 'Control word 6040h'], ['D2000.4', '始動・JOG 正転', 'Start / JOG forward'], ['D2000.5', 'JOG 逆転', 'JOG reverse'], ['D2000.7', '異常リセット', 'Fault reset'], ['D2000.8', '一時停止', 'Halt'],
+  ['D2001', '制御モード 6060h', 'Mode of operation 6060h'], ['D2002', 'ポイントテーブル指定', 'Point table No.'], ['D2003', 'オーバーライド %', 'Override %'], ['D2004', 'JOG 速度 µm/s', 'JOG speed µm/s'],
+  ['D1000', 'ステータスワード 6041h', 'Status word 6041h'], ['D1000.0', 'スイッチオン可', 'Ready to switch on'], ['D1000.1', 'スイッチオン', 'Switched on'], ['D1000.2', '運転有効（サーボ ON）', 'Operation enabled (servo ON)'], ['D1000.3', '異常', 'Fault'],
+  ['D1000.6', 'スイッチオン禁止', 'Switch on disabled'], ['D1000.7', '警告', 'Warning'], ['D1000.A', '到達', 'Target reached'], ['D1000.C', '始動受付・原点復帰完了', 'Start ack / homing complete'], ['D1000.D', '原点復帰エラー', 'Homing error'],
+  ['D1001', '制御モード表示 6061h', 'Mode display 6061h'], ['D1002', '完了ポイントテーブル No.', 'Completed point table No.'], ['D1004', '位置実際値 6064h', 'Position actual 6064h'], ['D1006', '速度実際値 606Ch', 'Velocity actual 606Ch'], ['D1008', 'アラーム番号', 'Alarm No.'],
+  ['SM400', '常時 ON', 'Always ON'], ['SM402', 'RUN 後 1 スキャン ON', 'ON for 1 scan after RUN'], ['SM412', '1 秒クロック', '1 s clock'],
 ];
-let cmtList = DEF_COMMENTS.map(([dev, text]) => ({ dev, text }));
+// 今の言語の初期コメント
+const defCmts = () => DEF_COMMENTS.map(([dev, ja, en]) => ({ dev, text: TX(ja, en) }));
+let cmtList = defCmts();
 let cmtMap = new Map();
 const rebuildCmtMap = () => { cmtMap = new Map(cmtList.filter(r => r.dev && r.text).map(r => [r.dev, r.text])); };
 const cmtOf = raw => cmtMap.get(raw) || '';
@@ -1704,7 +2031,8 @@ function wrapText(text, maxW, maxLines) {
   if (!measCtx) measCtx = document.createElement('canvas').getContext('2d');
   measCtx.font = '10px ' + (colors.body || 'sans-serif');
   const lines = []; let cur = '';
-  for (const ch of text) {
+  // 英語は単語の切れ目で折り返す
+  for (const ch of EN_MODE ? text.match(/\S+\s*|\s+/g) || [] : text) {
     if (measCtx.measureText(cur + ch).width > maxW && cur) { lines.push(cur); cur = ch; if (lines.length === maxLines) break; } else cur += ch;
   }
   if (lines.length < maxLines) { if (cur) lines.push(cur); }
@@ -1714,22 +2042,23 @@ function wrapText(text, maxW, maxLines) {
 // ---------- コントロールワード・ステータスワード・制御モードの意味 ----------
 // D2000（6040h）: CiA402 のコマンド＋使っているビット
 function cwMeaning(v, short) {
-  const cmd = (v & 0x80) ? ['Fault reset', '異常リセット'] : (v & 0x02) === 0 ? ['Disable voltage', '電圧遮断'] : (v & 0x06) === 0x02 ? ['Quick stop', 'クイックストップ']
-    : (v & 0x87) === 0x06 ? ['Shutdown', 'Shutdown（6）'] : (v & 0x8F) === 0x07 ? ['Switch on', 'Switch on（7）'] : (v & 0x8F) === 0x0F ? ['Enable op', 'Enable operation（15）'] : ['?', '定義なし'];
+  const cmd = (v & 0x80) ? ['Fault reset', TX('異常リセット', 'Fault reset')] : (v & 0x02) === 0 ? ['Disable voltage', TX('電圧遮断', 'Disable voltage')] : (v & 0x06) === 0x02 ? ['Quick stop', TX('クイックストップ', 'Quick stop')]
+    : (v & 0x87) === 0x06 ? ['Shutdown', TX('Shutdown（6）', 'Shutdown (6)')] : (v & 0x8F) === 0x07 ? ['Switch on', TX('Switch on（7）', 'Switch on (7)')] : (v & 0x8F) === 0x0F ? ['Enable op', TX('Enable operation（15）', 'Enable operation (15)')] : ['?', TX('定義なし', 'Undefined')];
   if (short) return cmd[0];
-  const ex = [[4, '始動・JOG 正転'], [5, 'JOG 逆転'], [8, '一時停止']].filter(([b]) => (v >> b) & 1).map(([, t]) => t);
-  return [cmd[1], ...ex].join('・');
+  const ex = [[4, TX('始動・JOG 正転', 'Start/JOG fwd')], [5, TX('JOG 逆転', 'JOG rev')], [8, TX('一時停止', 'Halt')]].filter(([b]) => (v >> b) & 1).map(([, t]) => t);
+  return [cmd[1], ...ex].join(TX('・', ', '));
 }
 // D1000（6041h）: CiA402 の状態＋立っているフラグ
 function swMeaning(v, short) {
-  const st = (v & 0x4F) === 0x40 ? 'スイッチオン禁止' : (v & 0x6F) === 0x21 ? 'スイッチオン可' : (v & 0x6F) === 0x23 ? 'スイッチオン'
-    : (v & 0x6F) === 0x27 ? '運転有効' : (v & 0x6F) === 0x07 ? 'クイックストップ中' : (v & 0x0F) === 0x08 || (v & 0x0F) === 0x0F ? '異常' : '定義なし';
-  if (short) return st;
-  const ex = [[7, '警告'], [10, '到達'], [12, '始動受付・原点復帰完了'], [13, '原点復帰エラー']].filter(([b]) => (v >> b) & 1).map(([, t]) => t);
-  return [st, ...ex].join('・');
+  const st = (v & 0x4F) === 0x40 ? TX('スイッチオン禁止', 'Switch on disabled') : (v & 0x6F) === 0x21 ? TX('スイッチオン可', 'Ready to switch on') : (v & 0x6F) === 0x23 ? TX('スイッチオン', 'Switched on')
+    : (v & 0x6F) === 0x27 ? TX('運転有効', 'Operation enabled') : (v & 0x6F) === 0x07 ? TX('クイックストップ中', 'Quick stop active') : (v & 0x0F) === 0x08 || (v & 0x0F) === 0x0F ? TX('異常', 'Fault') : TX('定義なし', 'Undefined');
+  // 接点の下（幅 74 px）に出す短い表示。英語は長いので略す
+  if (short) return EN_MODE ? ({ 'Switch on disabled': 'SwOn dis.', 'Ready to switch on': 'Ready', 'Switched on': 'Sw. on', 'Operation enabled': 'Enabled', 'Quick stop active': 'QS active', 'Undefined': '?' }[st] || st) : st;
+  const ex = [[7, TX('警告', 'Warning')], [10, TX('到達', 'Reached')], [12, TX('始動受付・原点復帰完了', 'Start ack/Homing done')], [13, TX('原点復帰エラー', 'Homing error')]].filter(([b]) => (v >> b) & 1).map(([, t]) => t);
+  return [st, ...ex].join(TX('・', ', '));
 }
 // D2001・D1001（6060h・6061h）: 制御モード
-const modeMeaning = (v, short) => ({ [-101]: ['pt', 'pt ポイントテーブル'], [-100]: ['jg', 'jg JOG'], 6: ['hm', 'hm 原点復帰'], 0: ['なし', 'モードなし'] }[v] || ['?', '使えないモード'])[short ? 0 : 1];
+const modeMeaning = (v, short) => ({ [-101]: ['pt', TX('pt ポイントテーブル', 'pt Point table')], [-100]: ['jg', 'jg JOG'], 6: ['hm', TX('hm 原点復帰', 'hm Homing')], 0: [TX('なし', 'none'), TX('モードなし', 'No mode')] }[v] || ['?', TX('使えないモード', 'Unsupported mode')])[short ? 0 : 1];
 // D の番号と値から意味を返す。対象外は null
 function wordMeaning(n, v, short) {
   if (n === RWW) return cwMeaning(v & 0xFFFF, short);
@@ -1756,11 +2085,11 @@ function renderCmtTable(focusDev) {
   const f = $('cmtFilter').value.trim().toUpperCase();
   const rows = cmtList.map((r, i) => ({ r, i })).filter(({ r }) => !f || r.dev.toUpperCase().includes(f) || r.text.toUpperCase().includes(f));
   $('cmtBody').innerHTML = rows.map(({ r, i }) => `<tr data-i="${i}">
-    <td><input type="text" class="cdev${r.dev && !normDev(r.dev) ? ' bad' : ''}" value="${esc(r.dev)}" aria-label="デバイス" data-i="${i}"></td>
-    <td style="width:100%"><input type="text" class="ctext" value="${esc(r.text)}" aria-label="${esc(r.dev)} のコメント" data-i="${i}" maxlength="32"></td>
-    <td><button type="button" class="cdel" data-i="${i}" aria-label="${esc(r.dev)} の行を削除">削除</button></td></tr>`).join('')
-    || '<tr><td colspan="3" class="hint">該当するコメントはありません。</td></tr>';
-  $('cmtCount').textContent = `${cmtList.filter(r => r.text).length} 件`;
+    <td><input type="text" class="cdev${r.dev && !normDev(r.dev) ? ' bad' : ''}" value="${esc(r.dev)}" aria-label="${TX('デバイス', 'Device')}" data-i="${i}"></td>
+    <td style="width:100%"><input type="text" class="ctext" value="${esc(r.text)}" aria-label="${TX(`${esc(r.dev)} のコメント`, `Comment for ${esc(r.dev)}`)}" data-i="${i}" maxlength="32"></td>
+    <td><button type="button" class="cdel" data-i="${i}" aria-label="${TX(`${esc(r.dev)} の行を削除`, `Delete the ${esc(r.dev)} row`)}">${TX('削除', 'Delete')}</button></td></tr>`).join('')
+    || `<tr><td colspan="3" class="hint">${TX('該当するコメントはありません。', 'No matching comments.')}</td></tr>`;
+  $('cmtCount').textContent = TX(`${cmtList.filter(r => r.text).length} 件`, `${cmtList.filter(r => r.text).length} entries`);
   if (focusDev != null) {
     const i = cmtList.findIndex(r => r.dev === focusDev);
     const inp = $('cmtBody').querySelector(`.ctext[data-i="${i}"]`);
@@ -1776,7 +2105,7 @@ function jumpNextDev(g) {
   wrap.scrollTop += (r.top - wr.top) - (wr.height - r.height) / 2;
   wrap.scrollLeft += Math.min(0, r.left - wr.left - 20) + Math.max(0, r.right - wr.right + 20);
   next.classList.remove('jump'); void next.getBoundingClientRect(); next.classList.add('jump');
-  $('ladMsg').textContent = all.length > 1 ? `${g.dataset.dev}: ${all.indexOf(next) + 1} / ${all.length} か所目` : `${g.dataset.dev}: ほかに使っている場所はありません`;
+  $('ladMsg').textContent = all.length > 1 ? TX(`${g.dataset.dev}: ${all.indexOf(next) + 1} / ${all.length} か所目`, `${g.dataset.dev}: ${all.indexOf(next) + 1} of ${all.length}`) : TX(`${g.dataset.dev}: ほかに使っている場所はありません`, `${g.dataset.dev}: not used anywhere else`);
 }
 // 割り付け表にあるデバイス（D1000〜・D2000〜）はその行を、ないデバイスはデバイスコメントを表示する
 function showAssign(dev) {
@@ -1796,12 +2125,15 @@ function openComment(dev) {
 }
 function initComments() {
   try { const s = JSON.parse(localStorage.getItem('j5g-comments') || 'null'); if (Array.isArray(s)) cmtList = s.map(([dev, text]) => ({ dev: String(dev), text: String(text) })); } catch (e) {}
+  // 初期値のままのコメントは、今の言語の初期値にそろえる（書き換えたコメントはそのまま）
+  const defOf = new Map(DEF_COMMENTS.map(([d, ja, en]) => [d, [ja, en]]));
+  for (const r of cmtList) { const d = defOf.get(r.dev); if (d && d.includes(r.text)) r.text = TX(d[0], d[1]); }
   try { const v = localStorage.getItem('j5g-cmtshow'); if (v != null) $('cmtShow').checked = v === '1'; } catch (e) {}
   rebuildCmtMap();
   const body = $('cmtBody');
   body.addEventListener('input', e => {
     const t = e.target, r = cmtList[+t.dataset.i]; if (!r) return;
-    if (t.classList.contains('ctext')) { r.text = t.value; $('cmtCount').textContent = `${cmtList.filter(x => x.text).length} 件`; cmtChanged(); }
+    if (t.classList.contains('ctext')) { r.text = t.value; $('cmtCount').textContent = TX(`${cmtList.filter(x => x.text).length} 件`, `${cmtList.filter(x => x.text).length} entries`); cmtChanged(); }
   });
   body.addEventListener('change', e => {
     const t = e.target, r = cmtList[+t.dataset.i]; if (!r || !t.classList.contains('cdev')) return;
@@ -1818,24 +2150,24 @@ function initComments() {
   $('cmtUsed').addEventListener('click', () => {
     const have = new Set(cmtList.map(r => r.dev)); let n = 0;
     for (const a of devList()) for (const raw of [a.raw]) if (!have.has(raw)) { cmtList.push({ dev: raw, text: '' }); have.add(raw); n++; }
-    renderCmtTable(); $('cmtMsg').textContent = n ? `プログラムで使っているデバイスを ${n} 行足しました。` : '足すデバイスはありません。';
+    renderCmtTable(); $('cmtMsg').textContent = n ? TX(`プログラムで使っているデバイスを ${n} 行足しました。`, `Added ${n} row(s) for devices used by the program.`) : TX('足すデバイスはありません。', 'No devices to add.');
   });
   let resetArm = 0;
   $('cmtReset').addEventListener('click', () => {
     const b = $('cmtReset');
-    if (!resetArm) { b.textContent = '本当に初期値に戻す'; resetArm = setTimeout(() => { b.textContent = '初期値に戻す'; resetArm = 0; }, 3000); return; }
-    clearTimeout(resetArm); resetArm = 0; b.textContent = '初期値に戻す';
-    cmtList = DEF_COMMENTS.map(([dev, text]) => ({ dev, text })); renderCmtTable(); cmtChanged();
+    if (!resetArm) { b.textContent = TX('本当に初期値に戻す', 'Really restore defaults'); resetArm = setTimeout(() => { b.textContent = TX('初期値に戻す', 'Restore defaults'); resetArm = 0; }, 3000); return; }
+    clearTimeout(resetArm); resetArm = 0; b.textContent = TX('初期値に戻す', 'Restore defaults');
+    cmtList = defCmts(); renderCmtTable(); cmtChanged();
   });
-  const toCsv = () => ['デバイス名,コメント', ...cmtList.filter(r => r.dev && r.text).map(r => `${r.dev},"${r.text.replace(/"/g, '""')}"`)].join('\r\n');
+  const toCsv = () => [TX('デバイス名,コメント', 'Device,Comment'), ...cmtList.filter(r => r.dev && r.text).map(r => `${r.dev},"${r.text.replace(/"/g, '""')}"`)].join('\r\n');
   $('cmtCopy').addEventListener('click', () => {
     const csv = toCsv(), ta = $('cmtCsv');
     ta.hidden = false; ta.value = csv;
-    navigator.clipboard?.writeText(csv).then(() => { $('cmtMsg').textContent = 'CSV をクリップボードにコピーしました。'; }, () => { ta.select(); $('cmtMsg').textContent = 'コピーできなかったので、下の欄を選択しました。Ctrl+C でコピーしてください。'; });
+    navigator.clipboard?.writeText(csv).then(() => { $('cmtMsg').textContent = TX('CSV をクリップボードにコピーしました。', 'Copied the CSV to the clipboard.'); }, () => { ta.select(); $('cmtMsg').textContent = TX('コピーできなかったので、下の欄を選択しました。Ctrl+C でコピーしてください。', 'Could not copy, so the box below is selected. Press Ctrl+C to copy.'); });
   });
   $('cmtImport').addEventListener('click', () => {
     const ta = $('cmtCsv');
-    if (ta.hidden || !ta.value.trim()) { ta.hidden = false; ta.value = ''; ta.focus(); $('cmtMsg').textContent = '「デバイス,コメント」の行を貼り付けて、もう一度「CSV を読み込む」を押してください。'; return; }
+    if (ta.hidden || !ta.value.trim()) { ta.hidden = false; ta.value = ''; ta.focus(); $('cmtMsg').textContent = TX('「デバイス,コメント」の行を貼り付けて、もう一度「CSV を読み込む」を押してください。', 'Paste "device,comment" lines, then press "Import CSV" again.'); return; }
     let n = 0, bad = 0;
     for (const line of ta.value.split(/\r?\n/)) {
       const m = line.match(/^\s*"?([^",]+)"?\s*[,\t]\s*"?(.*?)"?\s*$/); if (!m) continue;
@@ -1845,7 +2177,7 @@ function initComments() {
       n++;
     }
     renderCmtTable(); cmtChanged(); ta.hidden = true;
-    $('cmtMsg').textContent = `${n} 件読み込みました。${bad ? `読めない行が ${bad} 行ありました。` : ''}`;
+    $('cmtMsg').textContent = TX(`${n} 件読み込みました。${bad ? `読めない行が ${bad} 行ありました。` : ''}`, `Imported ${n}.${bad ? ` ${bad} line(s) could not be read.` : ''}`);
   });
   $('cmtShow').addEventListener('change', () => { try { localStorage.setItem('j5g-cmtshow', $('cmtShow').checked ? '1' : '0'); } catch (e) {} buildLadder(); });
   // クリック: 同じデバイスの次の場所へ飛ぶ／ダブルクリック: コメント編集／Ctrl＋クリック: 割り付けを表示
@@ -1903,7 +2235,7 @@ function buildLadder() {
   let y = 8; const parts = []; ladRefs = [];
   let gid = 0;
   RH = showCmt() ? 66 : 50;
-  const G0 = dev => { const id = 'lg' + (gid++); return { id, open: `<g id="${id}"${dev ? ` data-dev="${esc(dev)}" class="lk"` : ''}>${dev ? `<title>${esc(dev)}${cmtOf(dev) ? ' ' + esc(cmtOf(dev)) : ''}（クリック: 次の場所へ／ダブルクリック: コメント／Ctrl＋クリック: 割り付け）</title>` : ''}` }; };
+  const G0 = dev => { const id = 'lg' + (gid++); return { id, open: `<g id="${id}"${dev ? ` data-dev="${esc(dev)}" class="lk"` : ''}>${dev ? `<title>${esc(dev)}${cmtOf(dev) ? ' ' + esc(cmtOf(dev)) : ''}${TX('（クリック: 次の場所へ／ダブルクリック: コメント／Ctrl＋クリック: 割り付け）', ' (click: next use / double-click: comment / Ctrl+click: assignment)')}</title>` : ''}` }; };
   for (const r of prog.rungs) {
     if (r.comment) { parts.push(`<text x="${LX + 4}" y="${y + 13}" class="stmt">* ${esc(r.comment)}</text>`); y += 20; }
     const sz = sizeOf(r.cond), rows = Math.max(sz.h, r.outs.length), top = y;
@@ -1972,7 +2304,7 @@ function buildLadder() {
         if (o.kind === 'tc' || mean) inner += `<text x="${cx}" y="${yy + 24}" text-anchor="middle" class="val${mean ? ' mean' : ''}" id="${vEl}"></text>`;
         inner += cmtSvg(o.args[0].raw, cx, yy + (o.kind === 'tc' || mean ? 36 : 24), 76, 'middle', o.kind === 'tc' || mean ? 1 : 2);
         const a0 = o.args[0];
-        ladRefs.push({ g: g.id, out: o, coil: true, val: o.kind === 'tc' || mean ? vEl : null, fn: mean ? () => wordMeaning(a0.n, rdWordDev(a0), true) : () => `現在値 ${rdWord(a0)}` });
+        ladRefs.push({ g: g.id, out: o, coil: true, val: o.kind === 'tc' || mean ? vEl : null, fn: mean ? () => wordMeaning(a0.n, rdWordDev(a0), true) : () => TX(`現在値 ${rdWord(a0)}`, `PV ${rdWord(a0)}`) });
       } else {
         inner += `<rect x="${outX}" y="${yy - 12}" width="${railR - outX}" height="24" class="box"/>`;
         inner += `<text x="${outX + 8}" y="${yy + 4}" class="btxt">${esc(o.label)}</text>`;
@@ -1986,7 +2318,7 @@ function buildLadder() {
     });
     y = top + rows * RH + 8;
   }
-  if (!prog.rungs.length) { parts.push(`<text x="${LX + 8}" y="${y + 20}" class="stmt">回路がありません。右のニーモニックを書いて書き込みます。</text>`); y += 40; }
+  if (!prog.rungs.length) { parts.push(`<text x="${LX + 8}" y="${y + 20}" class="stmt">${TX('回路がありません。右のニーモニックを書いて書き込みます。', 'No rungs. Write mnemonics in the editor and write them to the PLC.')}</text>`); y += 40; }
   parts.push(`<text x="${LX + 8}" y="${y + 18}" class="step">END</text>`);
   const H = y + 30;
   parts.unshift(`<path d="M${LX} 4V${H - 18}M${railR} 4V${H - 18}" class="rail"/>`);
@@ -2022,7 +2354,7 @@ function drawMach() {
   for (let x = x0 - 6 + ph; x < X(MECH.endHi); x += pitch) { ctx.moveTo(x, yS - 4); ctx.lineTo(x + 4, yS + 4); }
   ctx.stroke();
   ctx.fillStyle = C.ink; ctx.fillRect(10, yS - 26, 64, 52);
-  ctx.fillStyle = C.muted; ctx.font = '600 11px ' + C.body; ctx.textAlign = 'center'; ctx.fillText('モータ', 42, yS - 32);
+  ctx.fillStyle = C.muted; ctx.font = '600 11px ' + C.body; ctx.textAlign = 'center'; ctx.fillText(TX('モータ', 'Motor'), 42, yS - 32);
   ctx.strokeStyle = C.panel; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(42, yS, 16, 0, TWO_PI); ctx.stroke();
   const a = -Math.PI / 2 + mot.th; ctx.beginPath(); ctx.moveTo(42, yS); ctx.lineTo(42 + Math.cos(a) * 14, yS + Math.sin(a) * 14); ctx.stroke();
   const sensor = (mm, label, active, col) => {
@@ -2038,24 +2370,24 @@ function drawMach() {
   ctx.fillStyle = mach.dog ? C.on : C.muted; ctx.font = '600 11px ' + C.data; ctx.fillText('DOG', X((MECH.dogLo + MECH.dogHi) / 2), yS + 58);
   ctx.fillStyle = C.muted; ctx.font = '10px ' + C.data; ctx.textAlign = 'center';
   for (let mm = 0; mm <= 400; mm += 50) { const x = X(mm); ctx.fillRect(x, yS + 26, 1, 4); ctx.fillText(String(mm), x, yS + 80); }
-  ctx.textAlign = 'left'; ctx.fillText('mm（機械座標）', 6, yS + 80);
+  ctx.textAlign = 'left'; ctx.fillText(TX('mm（機械座標）', 'mm (machine)'), 6, yS + 80);
   const xo = X(drv.offset);
   ctx.strokeStyle = C.cmd; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(xo, 16); ctx.lineTo(xo, yS + 24); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = C.cmd; ctx.textAlign = xo > W - 160 ? 'right' : 'left'; ctx.font = '600 11px ' + C.body;
-  ctx.fillText(drv.homeDone || drv.offset !== MECH.start ? '位置実際値 0（原点）' : '位置実際値 0（電源投入位置）', xo + (xo > W - 160 ? -4 : 4), 12);
+  ctx.fillText(drv.homeDone || drv.offset !== MECH.start ? TX('位置実際値 0（原点）', 'Position actual 0 (home)') : TX('位置実際値 0（電源投入位置）', 'Position actual 0 (power-on position)'), xo + (xo > W - 160 ? -4 : 4), 12);
   const xc = X(drv.cmd);
   ctx.fillStyle = C.cmd; ctx.beginPath(); ctx.moveTo(xc, yS - 46); ctx.lineTo(xc - 6, yS - 56); ctx.lineTo(xc + 6, yS - 56); ctx.closePath(); ctx.fill();
   const xt = X(pos), tw = 58;
   ctx.fillStyle = mot.crash ? C.crit : C.fb; ctx.fillRect(xt - tw / 2, yS - 40, tw, 30);
   ctx.fillStyle = C.ink; ctx.fillRect(xt - 12, yS - 10, 24, 20);
-  ctx.fillStyle = '#fff'; ctx.font = '600 11px ' + C.body; ctx.textAlign = 'center'; ctx.fillText('テーブル', xt, yS - 21);
+  ctx.fillStyle = '#fff'; ctx.font = '600 11px ' + C.body; ctx.textAlign = 'center'; ctx.fillText(TX('テーブル', 'Table'), xt, yS - 21);
 }
 
 // ---------- トレース ----------
 function drawTrace() {
   const cv = $('trace'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth;
   if (!W) return;
-  const PH = [['速度', 'mm/s'], ['偏差', 'µm'], ['トルク', '%']], ph = 86, bh = 18, top = 6, L = 100, R = 10;
+  const PH = [[TX('速度', 'Speed'), 'mm/s'], [TX('偏差', 'Deviation'), 'µm'], [TX('トルク', 'Torque'), '%']], ph = 86, bh = 18, top = 6, L = 100, R = 10;
   const H = top + PH.length * ph + traceOps.length * bh + 22;
   cv.style.height = H + 'px';
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -2088,7 +2420,7 @@ function drawTrace() {
       ctx.stroke();
     }
     ctx.setLineDash([]); ctx.restore();
-    if (p === 0 && n) { ctx.font = '10.5px ' + C.data; ctx.fillStyle = C.fb; ctx.textAlign = 'right'; ctx.fillText(`実 ${fmt(tr.spdA[idx(n - 1)], 1)}`, L + xw - 4, y0 + 12); ctx.fillStyle = C.cmd; ctx.fillText(`指令 ${fmt(tr.spdC[idx(n - 1)], 1)}`, L + xw - 74, y0 + 12); }
+    if (p === 0 && n) { ctx.font = '10.5px ' + C.data; ctx.fillStyle = C.fb; ctx.textAlign = 'right'; ctx.fillText(TX(`実 ${fmt(tr.spdA[idx(n - 1)], 1)}`, `act ${fmt(tr.spdA[idx(n - 1)], 1)}`), L + xw - 4, y0 + 12); ctx.fillStyle = C.cmd; ctx.fillText(TX(`指令 ${fmt(tr.spdC[idx(n - 1)], 1)}`, `cmd ${fmt(tr.spdC[idx(n - 1)], 1)}`), L + xw - 74, y0 + 12); }
   });
   const by0 = top + PH.length * ph;
   traceOps.forEach((op, b) => {
@@ -2131,11 +2463,11 @@ function tcRecord() {
 }
 function tcUi() {
   const el = $('tcState');
-  if (tc.done) { el.textContent = 'トリガ成立・停止'; el.className = 'chip warn'; }
-  else if (tc.armed) { el.textContent = `トリガ待ち（${tc.trigOp.raw} ${tc.edge === 'rise' ? '立上り' : '立下り'}）`; el.className = 'chip warn'; }
-  else if (tc.run) { el.textContent = 'サンプリング中'; el.className = 'chip ok'; }
-  else { el.textContent = '停止'; el.className = 'chip crit'; }
-  $('tcRun').textContent = tc.run ? '停止' : '再開';
+  if (tc.done) { el.textContent = TX('トリガ成立・停止', 'Triggered, stopped'); el.className = 'chip warn'; }
+  else if (tc.armed) { el.textContent = TX(`トリガ待ち（${tc.trigOp.raw} ${tc.edge === 'rise' ? '立上り' : '立下り'}）`, `Armed (${tc.trigOp.raw} ${tc.edge === 'rise' ? 'rising' : 'falling'})`); el.className = 'chip warn'; }
+  else if (tc.run) { el.textContent = TX('サンプリング中', 'Sampling'); el.className = 'chip ok'; }
+  else { el.textContent = TX('停止', 'Stopped'); el.className = 'chip crit'; }
+  $('tcRun').textContent = tc.run ? TX('停止', 'Stop') : TX('再開', 'Resume');
 }
 function tcView() {
   const end = tc.done ? tc.trigAt + Math.round(tc.win * 0.8) : tc.total;
@@ -2146,7 +2478,7 @@ const tcIsHex = a => a.t === 'D' && a.bit == null && (a.n === RWR || a.n === RWW
 const tcFmt = (a, v) => v == null ? '—' : isBitOp(a) ? (v ? 'ON' : 'OFF') : tcIsHex(a) ? hex(v) : String(v);
 function tcCurText() {
   const { zero } = tcView(), t = s => `${s - zero} ms`;
-  $('tcCur').textContent = tc.curA == null ? 'チャートをクリックするとカーソル A、もう一度で B。停止中に使います。'
+  $('tcCur').textContent = tc.curA == null ? TX('チャートをクリックするとカーソル A、もう一度で B。停止中に使います。', 'Click the chart for cursor A, again for B. Use while stopped.')
     : tc.curB == null ? `A ${t(tc.curA)}` : `A ${t(tc.curA)}・B ${t(tc.curB)}・Δt ${Math.abs(tc.curB - tc.curA)} ms`;
 }
 const TC_L = 280, TC_ROW = 24, TC_TOP = 22;
@@ -2167,8 +2499,8 @@ function drawTC() {
     ctx.strokeStyle = t === 0 && tc.done ? C.warn : C.grid; ctx.beginPath(); ctx.moveTo(x, TC_TOP - 4); ctx.lineTo(x, H - 4); ctx.stroke();
     ctx.fillStyle = C.muted; ctx.fillText(Math.abs(step) >= 1000 ? `${t / 1000} s` : `${t} ms`, x, 13);
   }
-  if (tc.done) { ctx.fillStyle = C.warn; ctx.textAlign = 'left'; ctx.fillText('トリガ', xOf(tc.trigAt) + 3, TC_TOP + 8); }
-  if (!rows) { ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.fillText('デバイスを入力してください（例 X0,D1000.C,D2002）', TC_L, TC_TOP + 16); }
+  if (tc.done) { ctx.fillStyle = C.warn; ctx.textAlign = 'left'; ctx.fillText(TX('トリガ', 'Trigger'), xOf(tc.trigAt) + 3, TC_TOP + 8); }
+  if (!rows) { ctx.fillStyle = C.muted; ctx.textAlign = 'left'; ctx.fillText(TX('デバイスを入力してください（例 X0,D1000.C,D2002）', 'Enter devices (e.g. X0,D1000.C,D2002)'), TC_L, TC_TOP + 16); }
   const at = tc.curA != null ? tc.curA : Math.min(end, tc.total) - 1;
   for (let k = 0; k < rows; k++) {
     const a = tc.ops[k], y0 = TC_TOP + k * TC_ROW, hiY = y0 + 5, loY = y0 + TC_ROW - 5, midY = y0 + TC_ROW / 2;
@@ -2239,7 +2571,7 @@ $('tcRun').addEventListener('click', () => {
 });
 $('tcArm').addEventListener('click', () => {
   const op = parseOperand($('tcTrig').value.trim().toUpperCase());
-  if (!op || op.k !== 'dev' || !isBitOp(op)) { $('tcCur').textContent = 'トリガにはビットデバイス（例 X0、D1000.C）を指定します'; return; }
+  if (!op || op.k !== 'dev' || !isBitOp(op)) { $('tcCur').textContent = TX('トリガにはビットデバイス（例 X0、D1000.C）を指定します', 'The trigger must be a bit device (e.g. X0, D1000.C)'); return; }
   Object.assign(tc, { trigOp: op, edge: $('tcEdge').value, armed: true, run: true, done: false, trigAt: null, prev: rdBit(op), curA: null, curB: null });
   tcCurText(); tcUi();
 });
@@ -2247,12 +2579,12 @@ $('tcClr').addEventListener('click', () => { tc.curA = tc.curB = null; tcCurText
 
 // ---------- ペインの並べ替え・幅・たたむ ----------
 // 初期配置を4列にしたので保存キーを変え、以前の並びを引き継がない
-const LAYOUT_KEY = 'j5g-layout-4col', SPANS = [3, 4, 6, 8, 9, 12], SPAN_L = { 3: '1/4', 4: '1/3', 6: '1/2', 8: '2/3', 9: '3/4', 12: '全幅' };
+const LAYOUT_KEY = 'j5g-layout-4col', SPANS = [3, 4, 6, 8, 9, 12], SPAN_L = { 3: '1/4', 4: '1/3', 6: '1/2', 8: '2/3', 9: '3/4', 12: TX('全幅', 'full') };
 const dash = $('dash');
 const spanOf = el => SPANS.find(s => el.classList.contains('s' + s)) || 6;
 const DEFAULT_LAYOUT = [...dash.children].map(el => [el.dataset.pane, spanOf(el), 0]);
-function setSpan(el, s) { SPANS.forEach(x => el.classList.remove('s' + x)); el.classList.add('s' + s); el.querySelector('.wbtn').textContent = '幅 ' + SPAN_L[s]; }
-function setCollapsed(el, c) { el.classList.toggle('collapsed', c); const b = el.querySelector('.cbtn'); b.textContent = c ? '＋' : '−'; b.setAttribute('aria-expanded', String(!c)); b.title = c ? '開く' : 'たたむ'; }
+function setSpan(el, s) { SPANS.forEach(x => el.classList.remove('s' + x)); el.classList.add('s' + s); el.querySelector('.wbtn').textContent = TX('幅 ', 'Width ') + SPAN_L[s]; }
+function setCollapsed(el, c) { el.classList.toggle('collapsed', c); const b = el.querySelector('.cbtn'); b.textContent = c ? '＋' : '−'; b.setAttribute('aria-expanded', String(!c)); b.title = c ? TX('開く', 'Expand') : TX('たたむ', 'Collapse'); }
 function saveLayout() {
   const lay = [...dash.children].map(el => [el.dataset.pane, spanOf(el), el.classList.contains('collapsed') ? 1 : 0]);
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(lay)); } catch (e) {}
@@ -2276,7 +2608,7 @@ let dragging = null;
 function initPanes() {
   for (const el of [...dash.children]) {
     const tools = document.createElement('div'); tools.className = 'pane-tools';
-    tools.innerHTML = '<button type="button" class="wbtn" title="幅を変える"></button><button type="button" class="cbtn"></button>';
+    tools.innerHTML = `<button type="button" class="wbtn" title="${TX('幅を変える', 'Change width')}"></button><button type="button" class="cbtn"></button>`;
     el.querySelector('.pane-h').appendChild(tools);
     setSpan(el, spanOf(el)); setCollapsed(el, false);
     tools.querySelector('.wbtn').addEventListener('click', () => { const s = spanOf(el); setSpan(el, SPANS[(SPANS.indexOf(s) + 1) % SPANS.length]); saveLayout(); });
@@ -2377,7 +2709,7 @@ let monRows = [];
 function buildDevMon() {
   const list = devList();
   $('devmon').innerHTML = list.map((a, i) => {
-    const cm = cmtOf(a.raw) || RCOM[a.raw] || IOC[a.raw] || (a.t === 'T' ? 'タイマ（100 ms）' : a.t === 'C' ? 'カウンタ' : '');
+    const cm = cmtOf(a.raw) || RCOM[a.raw] || IOC[a.raw] || (a.t === 'T' ? TX('タイマ（100 ms）', 'Timer (100 ms)') : a.t === 'C' ? TX('カウンタ', 'Counter') : '');
     return `<tr><td class="d">${esc(a.raw)}</td><td class="n" id="dm${i}"></td><td>${esc(cm)}</td></tr>`;
   }).join('');
   monRows = list.map((a, i) => ({ a, el: document.getElementById('dm' + i), last: null }));
@@ -2393,13 +2725,13 @@ function updDevMon() {
   }
 }
 function buildRmap() {
-  $('rmap').innerHTML = RMAP.map(([d, l, nm, ds]) => `<tr data-devs="D${d}${l.includes('-') ? ' D' + (d + 1) : ''}"><td class="d">D${d}${l.includes('-') ? '〜' + (d + 1) : ''}</td><td class="d">${l}</td><td class="wrap"><b>${esc(nm)}</b><br><span class="hint">${esc(ds)}</span></td></tr>`).join('');
+  $('rmap').innerHTML = RMAP.map(([d, l, nm, ds]) => `<tr data-devs="D${d}${l.includes('-') ? ' D' + (d + 1) : ''}"><td class="d">D${d}${l.includes('-') ? TX('〜', '–') + (d + 1) : ''}</td><td class="d">${l}</td><td class="wrap"><b>${esc(nm)}</b><br><span class="hint">${esc(ds)}</span></td></tr>`).join('');
 }
 function buildPtab() {
   $('ptab').innerHTML = ptab.map((d, i) => `<tr>
     <td class="d">${i + 1}</td>
     ${['pos', 'spd', 'acc', 'dec', 'dwell'].map(k => `<td><input type="number" data-i="${i}" data-k="${k}" value="${d[k]}" step="${k === 'pos' ? 0.001 : k === 'spd' ? 50 : 10}" aria-label="No.${i + 1} ${k}"></td>`).join('')}
-    <td><select data-i="${i}" data-k="aux" aria-label="No.${i + 1} 補助機能">${AUX.map((t, v) => `<option value="${v}"${d.aux === v ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
+    <td><select data-i="${i}" data-k="aux" aria-label="${TX(`No.${i + 1} 補助機能`, `No.${i + 1} aux function`)}">${AUX.map((t, v) => `<option value="${v}"${d.aux === v ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
   </tr>`).join('');
 }
 $('ptab').addEventListener('input', e => {
@@ -2436,25 +2768,25 @@ const bdFlow = (id, on) => {
   const el = $(id); if (!el || el.classList.contains('act') === !!on) return;
   el.classList.toggle('act', !!on); el.setAttribute('marker-end', on ? 'url(#bdAon)' : 'url(#bdA)');
 };
-const MODE_NAME = { [-101]: 'pt（-101）ポイントテーブル', [-100]: 'jg（-100）JOG', 6: 'hm（6）原点復帰' };
-const TASK_NAME = { idle: '停止中', pos: '移動中', dwell: 'ドウェル中', jog: 'JOG 中', home: '原点復帰中' };
+const MODE_NAME = EN_MODE ? { [-101]: 'pt (-101) Point table', [-100]: 'jg (-100) JOG', 6: 'hm (6) Homing' } : { [-101]: 'pt（-101）ポイントテーブル', [-100]: 'jg（-100）JOG', 6: 'hm（6）原点復帰' };
+const TASK_NAME = EN_MODE ? { idle: 'Idle', pos: 'Moving', dwell: 'Dwell', jog: 'JOG', home: 'Homing' } : { idle: '停止中', pos: '移動中', dwell: 'ドウェル中', jog: 'JOG 中', home: '原点復帰中' };
 function updBlock() {
   for (let i = 0; i < 8; i++) bdOn('bd-x' + i, panelIn[i]);
   for (let i = 0; i < 4; i++) bdOn('bd-y' + i, S.y[i]);
   for (const m of [100, 10, 20, 30, 40]) { const v = !!S.m.get(m); bdSet('bd-m' + m, v ? 'ON' : 'OFF'); bdOn('bd-m' + m, v); }
   bdSet('bd-d2000', hex(dw(RWW))); bdSet('bd-d2001', String(dw(RWW + 1))); bdSet('bd-d2002', String(dw(RWW + 2)));
   bdSet('bd-d1000', hex(dw(RWR))); bdSet('bd-d1001', String(dw(RWR + 1))); bdSet('bd-d1004', fmt(dw(RWR + 4)));
-  bdSet('bd-link', `周期 ${prm.link} ms`);
-  bdSet('bd-state', ST[drv.state]); bdSet('bd-sw', 'ステータスワード ' + hex(drv.status()));
+  bdSet('bd-link', TX(`周期 ${prm.link} ms`, `Period ${prm.link} ms`));
+  bdSet('bd-state', ST[drv.state]); bdSet('bd-sw', TX('ステータスワード ', 'Status word ') + hex(drv.status()));
   bdSet('bd-mode', MODE_NAME[drv.mode] || String(drv.mode));
   const moving = drv.task === 'pos' || drv.task === 'dwell';
   ptab.forEach((d, i) => {
-    bdSet('bd-pt' + (i + 1), `No.${i + 1}  ${d.aux >= 2 ? '増分 ' : ''}${fmt(d.pos, 3)} mm  ${fmt(d.spd)} r/min`);
+    bdSet('bd-pt' + (i + 1), `No.${i + 1}  ${d.aux >= 2 ? TX('増分 ', 'inc ') : ''}${fmt(d.pos, 3)} mm  ${fmt(d.spd)} r/min`);
     bdOn('bd-ptr' + (i + 1), moving && drv.no === i + 1);
   });
   bdSet('bd-gen', `${moving ? `No.${drv.no} ` : ''}${TASK_NAME[drv.task]}  ${fmt(Math.abs(drv.v), 1)} mm/s`);
-  bdSet('bd-loop', `PA09 応答性 ${prm.level}・${drv.on() ? 'サーボ ON' : 'サーボ OFF'}`);
-  bdSet('bd-rpm', `${fmt(mot.w / TWO_PI * 60)} r/min`); bdSet('bd-mm', `テーブル ${fmt(mot.pos(), 3)} mm`);
+  bdSet('bd-loop', TX(`PA09 応答性 ${prm.level}・${drv.on() ? 'サーボ ON' : 'サーボ OFF'}`, `PA09 level ${prm.level}, ${drv.on() ? 'servo ON' : 'servo OFF'}`));
+  bdSet('bd-rpm', `${fmt(mot.w / TWO_PI * 60)} r/min`); bdSet('bd-mm', TX(`テーブル ${fmt(mot.pos(), 3)} mm`, `Table ${fmt(mot.pos(), 3)} mm`));
   bdOn('bd-dog', mach.dog); bdOn('bd-lsp', !mach.lspOK); bdOn('bd-lsn', !mach.lsnOK);
   const link = plcRun;
   bdFlow('f-in', panelIn.some(v => v)); bdFlow('f-out', S.y.some(v => v)); bdFlow('f-wr', link); bdFlow('f-rd', link);
@@ -2471,7 +2803,7 @@ function updPanel() {
   document.querySelectorAll('#lampsY .lamp').forEach(l => l.classList.toggle('lit', S.y[+l.dataset.y] === 1));
   $('ampDisp').textContent = drv.alarm ? `AL.${drv.alarm}` : drv.warn.startsWith('AL.99') ? 'AL.99' : drv.state === 'OE' ? 'ON' : 'OFF';
   const mname = { [-101]: 'pt', [-100]: 'jg', 6: 'hm' }[drv.mode] || '?';
-  $('ampState').textContent = `${ST[drv.state]}・モード ${mname}・SW ${hex(drv.status())}`;
+  $('ampState').textContent = TX(`${ST[drv.state]}・モード ${mname}・SW ${hex(drv.status())}`, `${ST[drv.state]} · mode ${mname} · SW ${hex(drv.status())}`);
   const L = (id, v) => $(id).classList.toggle('lit', v);
   L('a-link', plcRun); L('a-dog', mach.dog); L('a-lsp', mach.lspOK); L('a-lsn', mach.lsnOK); L('a-alm', !!drv.alarm);
   $('r-pos').innerHTML = `${fmt(mot.pos(), 3)}<small>mm</small>`;
@@ -2479,7 +2811,7 @@ function updPanel() {
   $('r-spd').innerHTML = `${fmt(mot.w / TWO_PI * 60)}<small>r/min</small>`;
   $('r-dev').innerHTML = `${fmt((mot.thc - mot.th) / TWO_PI * LEAD * 1000, 1)}<small>µm</small>`;
   $('r-trq').innerHTML = `${fmt(mot.T / MOTOR.Tr * 100)}<small>%</small>`;
-  const msg = mot.crash ? 'メカストッパに当たっています' : drv.alarm ? `AL.${drv.alarm} ${drv.alarmMsg}。異常リセット（コントロールワード b7）で戻す` : drv.warn ? drv.warn : !plcRun ? 'CPU は STOP 中（RWw はすべて 0）' : '';
+  const msg = mot.crash ? TX('メカストッパに当たっています', 'Hitting the mechanical stopper') : drv.alarm ? TX(`AL.${drv.alarm} ${drv.alarmMsg}。異常リセット（コントロールワード b7）で戻す`, `AL.${drv.alarm} ${drv.alarmMsg}. Clear it with fault reset (control word b7)`) : drv.warn ? drv.warn : !plcRun ? TX('CPU は STOP 中（RWw はすべて 0）', 'CPU is in STOP (all RWw are 0)') : '';
   $('machMsg').textContent = msg; $('machMsg').style.color = msg ? colors.crit : '';
 }
 
@@ -2492,7 +2824,7 @@ function loop(now) {
   frame++;
   drawMach(); updPanel();
   if (frame % 2 === 0) { updLadder(); drawTrace(); drawTC(); }
-  if (frame % 6 === 0) { updDevMon(); updBlock(); $('rswPct').textContent = `サーボ受信 RWw3: ${drv.ovr} %`; }
+  if (frame % 6 === 0) { updDevMon(); updBlock(); $('rswPct').textContent = TX(`サーボ受信 RWw3: ${drv.ovr} %`, `Servo receives RWw3: ${drv.ovr} %`); }
   requestAnimationFrame(loop);
 }
 
@@ -2502,6 +2834,16 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rea
 new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); buildLadder(); });
 
+applyLang();
+// 言語を切り替えたら保存して読み込み直す（ラダー・レイアウト・コメントはブラウザに保存済み）
+document.querySelectorAll('input[name=lang]').forEach(r => {
+  r.checked = r.value === LANG;
+  r.addEventListener('change', () => {
+    try { localStorage.setItem('j5g-lang', r.value); } catch (e) {}
+    const u = new URL(location.href);
+    if (u.searchParams.has('lang')) { u.searchParams.set('lang', r.value); location.href = u.href; } else location.reload();
+  });
+});
 buildPanel(); buildRmap(); buildPtab(); tcSetDevices(); tcUi(); initPanes(); initComments();
 { let t = null; try { t = localStorage.getItem('j5g-tab'); } catch (e) {} const b = t && $(t); if (b && TABS.includes(b)) selTab(b); }
 let saved = null; try { saved = localStorage.getItem('j5g-src'); } catch (e) {}
@@ -2516,7 +2858,8 @@ try { const s = localStorage.getItem('j5g-rsw'), v = +s; if (s != null && v >= 0
   const key = MODE_SAMPLE[ptMode + (ovrOn ? '+ovr' : '')];
   $('sample').value = key; src.value = SAMPLES[key]; updGutter(); writeProgram();
   // 前回エディタにあった別の内容は、未書込みのまま戻す（動いているのは上で書いたサンプル）
-  if (saved && saved !== SAMPLES[key]) { src.value = saved; updGutter(); setState(); showMsgs(parseProgram(saved)); }
+  // サンプルそのまま（どちらの言語でも）なら戻さない
+  if (saved && !isSample(saved)) { src.value = saved; updGutter(); setState(); showMsgs(parseProgram(saved)); }
 }
 window.__j5 = { S, drv, mot, mach, panelIn, parseProgram, get prog() { return prog; }, scanOnce };
 requestAnimationFrame(loop);

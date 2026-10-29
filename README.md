@@ -6,6 +6,8 @@ GX Works3 のニーモニックでラダーを書き換えて書き込むと、�
 
 > **非公式の学習用ツールです。** 三菱電機株式会社とは関係がなく、同社が作ったり、認めたり、サポートしたりしているものではありません。数値は実機の値ではない簡易モデルです。
 
+> **English:** An unofficial browser simulator for learning how a PLC (FX5UC) drives an MR-J5-G servo over CC-Link IE Field Network Basic. The UI is available in English: **https://kajiyajp.github.io/app_j5_sim/?lang=en** (or use the 日本語 / EN switch in the top bar). Not affiliated with Mitsubishi Electric. Do not write its ladder or settings to real equipment.
+
 ## 実機には使わないでください
 
 - このシミュレータの割り付け（RWw・RWr とオブジェクトの対応、JOG のビット、アラーム番号）、パラメータの番号と単位、状態遷移の細かい動きは、**実機で確かめていない例**を含みます。
@@ -17,6 +19,7 @@ GX Works3 のニーモニックでラダーを書き換えて書き込むと、�
 
 **https://kajiyajp.github.io/app_j5_sim/** をブラウザで開くと、そのまま使えます（GitHub Pages で公開中。`main` ブランチの最新版が自動で反映されます）。
 
+- 英語表示で開くときは **https://kajiyajp.github.io/app_j5_sim/?lang=en** です。上のバーの「日本語 / EN」でも切り替えられます。
 - 古い表示のままのときは、Ctrl + F5（Mac は ⌘ + Shift + R）で再読み込みしてください。
 - 作った経緯や使い方の紹介記事（Qiita）: [実機なしで学ぶ PLC × サーボ：ブラウザで動くラダー＆MR-J5 シミュレータを作った【非公式】](https://qiita.com/kajiyajp/items/be760e40410220e65863)
 - Claude Code での作り方と、AI が間違えたところの記事（Zenn）: [PLC の知識はあるけどコードは書けない私が、Claude Code にサーボのシミュレータを作らせた 1 日【非公式】](https://zenn.dev/xlmen/articles/33a73874f91dd0)
@@ -38,6 +41,7 @@ GX Works3 のニーモニックでラダーを書き換えて書き込むと、�
 |---|---|
 | No. 指定: ラダー ／ セレクタ | **ラダー**: ラダーの `MOV K1 D2002` で No. を決める。**セレクタ**: 操作盤のデジタルスイッチ（X10〜X13、BCD）で No.1〜4 を選んで起動（X0）。0・5〜9 では始動しない |
 | オーバーライド: OFF ／ ON | **ON**: 操作盤のロータリースイッチ（X14〜X17、16 進）で速度を 50〜150 % に変える（0〜A が 10 % 刻み、B〜F は 150 %）。位置決め・JOG・原点復帰のすべてに効き、運転中に回してもすぐ変わる |
+| 日本語 ／ EN | 画面の文言、サンプルラダーのコメント、デバイスコメントの初期値、エラーメッセージを英語にする。切り替えるとページを読み込み直す（ラダー・レイアウト・コメントは保存済みなので消えない）。初めて開いたときはブラウザの言語に合わせる。URL に `?lang=en`・`?lang=ja` を付けても選べる |
 
 切り替えると、その組み合わせのサンプル（下の表）を書き込み、操作盤とラダーをそろえます。エディタに自作のラダーがあるときは、置き換える前に確かめます。
 
@@ -120,7 +124,7 @@ RWw・RWr とオブジェクトの対応、JOG の割り当て（コントロー
 
 - HTML ファイル 1 つ（`index.html`）。ライブラリは使っていません（素の JavaScript、Canvas、SVG）。
 - フォントは Google Fonts から読みます。オフラインでは OS のフォントで表示され、動作は同じです。
-- ブラウザの localStorage に、編集中のニーモニック、デバイスコメント、ペインの並び、ラダー図の枠の高さ、開いているタブ、コメント表示の設定、No. 指定とオーバーライドの切り替え、スイッチの位置を保存します。ポイントテーブル・パラメータ・デバイスの値は保存しません（開き直すと初期値）。
+- ブラウザの localStorage に、編集中のニーモニック、デバイスコメント、ペインの並び、ラダー図の枠の高さ、開いているタブ、コメント表示の設定、No. 指定とオーバーライドの切り替え、スイッチの位置、表示言語を保存します。ポイントテーブル・パラメータ・デバイスの値は保存しません（開き直すと初期値）。
 - 実機の PLC・サーボ、GX Works3、MR Configurator2 とは通信しません。
 
 ## モデルの前提
